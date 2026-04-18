@@ -41,7 +41,7 @@ Config_init() {
   Config_readinMemoryUsage := False
   Config_readinNetworkLoad := False
   Config_readinTime        := True
-  Config_readinTimeFormat  := "HH:mm"
+  Config_readinTimeFormat  := "hh:mm tt"
   Config_readinVolume      := False
   Config_readinInterval    := 30000
 
@@ -67,6 +67,8 @@ Config_init() {
   Config_layoutAxis_#3      := 2
   Config_layoutGapWidth     := 0
   Config_layoutMFactor      := 0.6
+  Config_layoutStackMX      := 1
+  Config_layoutStackMY      := 1
   Config_areaTraceTimeout   := 1000
   Config_continuouslyTraceAreas := False
   Config_dynamicTiling      := True
@@ -391,6 +393,10 @@ Config_saveSession(original, target)
         text .= "View_#" m "_#" A_Index "_layoutMX=" View_#%m%_#%A_Index%_layoutMX "`n"
       If Not (View_#%m%_#%A_Index%_layoutMY = 1)
         text .= "View_#" m "_#" A_Index "_layoutMY=" View_#%m%_#%A_Index%_layoutMY "`n"
+      If Not (View_#%m%_#%A_Index%_layoutStackMX = Config_layoutStackMX)
+        text .= "View_#" m "_#" A_Index "_layoutStackMX=" View_#%m%_#%A_Index%_layoutStackMX "`n"
+      If Not (View_#%m%_#%A_Index%_layoutStackMY = Config_layoutStackMY)
+        text .= "View_#" m "_#" A_Index "_layoutStackMY=" View_#%m%_#%A_Index%_layoutStackMY "`n"
     }
   }
 
@@ -414,23 +420,24 @@ Config_UI_saveSession() {
 
 ;; Key definitions
 ;; Window management
-#Down::View_activateWindow(0, +1)
-#Up::View_activateWindow(0, -1)
-#+Down::View_shuffleWindow(0, +1)
-#+Up::View_shuffleWindow(0, -1)
+#j::View_activateWindow(0, +1)
+#k::View_activateWindow(0, -1)
+#+j::View_shuffleWindow(-1, +1)
+#+k::View_shuffleWindow(0, -1)
+;; TODO
 #+Enter::View_shuffleWindow(1)
-#c::Manager_closeWindow()
+#+c::Manager_closeWindow()
 #+d::Window_toggleDecor()
 #+f::View_toggleFloatingWindow()
-#+m::Manager_moveWindow()
-#^m::Manager_minimizeWindow()
+#^m::Manager_moveWindow()
+#+n::Manager_minimizeWindow()
 #+s::Manager_sizeWindow()
-#+x::Manager_maximizeWindow()
+#+m::Manager_maximizeWindow()
 #i::Manager_getWindowInfo()
 #+i::Manager_getWindowList()
-!Down::View_moveWindow(0, +1)
-!Up::View_moveWindow(0, -1)
-!+Enter::Manager_maximizeWindow()
+!j::View_moveWindow(0, +1)
+!k::View_moveWindow(0, -1)
+!+m::Manager_maximizeWindow()
 !1::View_moveWindow(1)
 !2::View_moveWindow(2)
 !3::View_moveWindow(3)
@@ -446,7 +453,7 @@ Config_UI_saveSession() {
 ;; Window debugging
 #^i::Debug_logViewWindowList()
 #^+i::Debug_logManagedWindowList()
-#^h::Debug_logHelp()
+#^+h::Debug_logHelp()
 #^d::Debug_setLogLevel(0, -1)
 #^+d::Debug_setLogLevel(0, +1)
 
@@ -455,8 +462,12 @@ Config_UI_saveSession() {
 #f::View_setLayout(3)
 #m::View_setLayout(2)
 #t::View_setLayout(1)
-#Left::View_setLayoutProperty("MFactor", 0, -0.05)
-#Right::View_setLayoutProperty("MFactor", 0, +0.05)
+#+h::View_setLayoutProperty("MY", 0, +1)
+#+;::View_setLayoutProperty("MY", 0, -1)
+#^h::View_setLayoutProperty("StackMX", 0, +1)
+#^;::View_setLayoutProperty("StackMX", 0, -1)
+#h::View_setLayoutProperty("MFactor", 0, -0.05)
+#;::View_setLayoutProperty("MFactor", 0, +0.05)
 #^t::View_setLayoutProperty("Axis", 0, +1, 1)
 #^Enter::View_setLayoutProperty("Axis", 0, +2, 1)
 #^Tab::View_setLayoutProperty("Axis", 0, +1, 2)
@@ -467,10 +478,10 @@ Config_UI_saveSession() {
 #^Left::View_setLayoutProperty("MX", 0, -1)
 #+Left::View_setLayoutProperty("GapWidth", 0, -2)
 #+Right::View_setLayoutProperty("GapWidth", 0, +2)
-#^Backspace::View_resetTileLayout()
+#+r::View_resetTileLayout()
 
 ;; View/Tag management
-#+n::View_toggleMargins()
+#+b::View_toggleMargins()
 #BackSpace::Monitor_activateView(-1)
 #+0::Monitor_setWindowTag(10)
 #1::Monitor_activateView(1)
@@ -514,6 +525,7 @@ Config_UI_saveSession() {
 ;; GUI management
 #+Space::Monitor_toggleBar()
 #Space::Monitor_toggleTaskBar()
+#Return::Run, alacritty
 #y::Bar_toggleCommandGui()
 #+y::Monitor_toggleNotifyIconOverflowWindow()
 !+y::View_traceAreas()

@@ -115,6 +115,7 @@ Tiler_isActive(m, v) {
 Tiler_layoutTiles(m, v, x, y, w, h, type = "") {
   Local axis1, axis2, axis3, gapW, hasStackArea, mFact, mSplit, mXSet, mYSet, mYActual, n
   Local h1, h2, mWndCount, stackLen, subAreaCount, subAreaWndCount, subH1, subW1, subX1, subY1, w1, w2, x1, x2, y1, y2
+  Local stackMX, stackMY, stackGridSize, stackSubAreaCount, stackWndCount, stackX, stackY, stackW, stackH, stackSubX, stackSubY, stackSubW, stackSubH, stackRowWndCount
 
   axis1  := Abs(View_#%m%_#%v%_layoutAxis_#1)
   axis2  := View_#%m%_#%v%_layoutAxis_#2
@@ -178,13 +179,42 @@ Tiler_layoutTiles(m, v, x, y, w, h, type = "") {
       Tiler_stackTiles(m, v, mSplit + 1, 1, +1, 3, x2, y2, w2, h2, 0, type)
     } Else {
       stackLen := View_tiledWndId0 - mSplit
-      ;; 161 is the minimal width of an Windows-Explorer window, below which it cannot be resized.
-      ;; The minimal height is 243, but this seems too high for being a limit here;
-      ;; therefor '2 * Bar_height' is used for the minimal height of a window.
-      If (axis3 = 3 Or (axis3 = 1 And (w2 - (stackLen - 1) * gapW) / stackLen < 161) Or (axis3 = 2 And (h2 - (stackLen - 1) * gapW) / stackLen < 2 * Bar_height))
-        Tiler_stackTiles(m, v, mSplit + 1, stackLen, +1, 3, x2, y2, w2, h2, 0, type)
-      Else
-        Tiler_stackTiles(m, v, mSplit + 1, stackLen, +1, axis3, x2, y2, w2, h2, gapW, type)
+      stackMX := View_#%m%_#%v%_layoutStackMX
+      stackMY := View_#%m%_#%v%_layoutStackMY
+      stackGridSize := stackMX * stackMY
+
+      ;; Determine if we should use grid layout
+      ;; Grid is used if stackMX > 1, otherwise fall back to single-axis stacking
+      If (stackMX > 1) {
+        ;; Grid layout: split stack area into rows and columns
+        Debug_logMessage("DEBUG[2] Tiler_layoutTiles: Stack grid " stackMX "x" stackMY ", " stackLen " windows", 2)
+        stackSubAreaCount := stackMY
+        stackWndCount := stackLen
+        stackX := x2
+        stackY := y2
+        stackW := w2
+        stackH := h2
+
+        Loop, % stackMY {
+          Tiler_splitArea(1, 1 / stackSubAreaCount, stackX, stackY, stackW, stackH, gapW, stackSubX, stackSubY, stackSubW, stackSubH, stackX, stackY, stackW, stackH)
+          stackRowWndCount := stackMX
+          If (stackWndCount < stackRowWndCount)
+            stackRowWndCount := stackWndCount
+          Debug_logMessage("DEBUG[3] Tiler_layoutTiles: Stack row #" A_Index " with " stackRowWndCount " windows", 3)
+          Tiler_stackTiles(m, v, mSplit + stackLen - stackWndCount + 1, stackRowWndCount, +1, 1, stackSubX, stackSubY, stackSubW, stackSubH, gapW, type)
+          stackWndCount -= stackRowWndCount
+          stackSubAreaCount -= 1
+        }
+      } Else {
+        ;; Single-axis layout (original behavior)
+        ;; 161 is the minimal width of an Windows-Explorer window, below which it cannot be resized.
+        ;; The minimal height is 243, but this seems too high for being a limit here;
+        ;; therefor '2 * Bar_height' is used for the minimal height of a window.
+        If (axis3 = 3 Or (axis3 = 1 And (w2 - (stackLen - 1) * gapW) / stackLen < 161) Or (axis3 = 2 And (h2 - (stackLen - 1) * gapW) / stackLen < 2 * Bar_height))
+          Tiler_stackTiles(m, v, mSplit + 1, stackLen, +1, 3, x2, y2, w2, h2, 0, type)
+        Else
+          Tiler_stackTiles(m, v, mSplit + 1, stackLen, +1, axis3, x2, y2, w2, h2, gapW, type)
+      }
     }
   }
 }
@@ -251,6 +281,28 @@ Tiler_setMY(m, v, d) {
   n := View_#%m%_#%v%_layoutMY + d
   If (n >= 1) And (n <= 9) {
     View_#%m%_#%v%_layoutMY := n
+    Return, 1
+  } Else
+    Return, 0
+}
+
+Tiler_setStackMX(m, v, d) {
+  Local n
+
+  n := View_#%m%_#%v%_layoutStackMX + d
+  If (n >= 1) And (n <= 9) {
+    View_#%m%_#%v%_layoutStackMX := n
+    Return, 1
+  } Else
+    Return, 0
+}
+
+Tiler_setStackMY(m, v, d) {
+  Local n
+
+  n := View_#%m%_#%v%_layoutStackMY + d
+  If (n >= 1) And (n <= 9) {
+    View_#%m%_#%v%_layoutStackMY := n
     Return, 1
   } Else
     Return, 0

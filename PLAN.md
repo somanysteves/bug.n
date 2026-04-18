@@ -2,23 +2,30 @@
 
 ## 1. Build System — Admin Exe
 - [x] Install AutoHotkey 1.1.x (installed v1.1.37.02 via direct download)
-- [x] Add `; @Ahk2Exe-UpdateManifest 1` to `src/Main.ahk` (embeds UAC elevation manifest)
-- [x] Create `build.bat` in repo root (simple ahk2exe wrapper)
-- [ ] Verify: `bugn.exe` triggers UAC prompt on launch and can manage elevated windows
+- [x] Create `build.bat` in repo root (ahk2exe wrapper)
+- [x] Add `build.ps1` for reliable CI/subprocess builds (build.bat unreliable via cmd /c)
+- [x] Removed `@Ahk2Exe-UpdateManifest 1` — broke Ahk2Exe in subprocess; use gsudo to elevate at runtime instead
+- [x] Verify: `bugn.exe` can manage elevated windows (run via gsudo)
 
-## 2. Keybindings — Stock AwesomeWM Defaults
-- [ ] Remap focus: `#Down/#Up` → `#j/#k`
-- [ ] Remap swap: `#+Down/+Up` → `#+j/#+k`
-- [ ] Remap zoom: `#+Enter` → `#^Return`
-- [ ] Remap close: `#c` → `#+c`
-- [ ] Remap master resize: `#Left/#Right` → `#h/#l`
-- [ ] Add nmaster: `#+h` / `#+l` (increase/decrease master count)
-- [ ] Remap layout cycle: `#Space` → next layout, `#+Space` → prev layout
-- [ ] Remap floating toggle: `#^Space` (was `#f`)
-- [ ] Remap bar toggle: `#+b` (free up `#+Space`)
+## 2. Keybindings — AwesomeWM Style
+- [x] Remap focus: `#Down/#Up` → `#j/#k`
+- [x] Remap swap: `#+Down/+Up` → `#+j/#+k`
+- [x] Remap close: `#c` → `#+c`
+- [x] Remap master resize: `#Left/#Right` → `#h/#;`
+- [x] Add nmaster Y: `#+h` / `#+;` (increase/decrease master row count)
+- [x] Add StackMX grid: `#^h` / `#^;` (increase/decrease stack columns)
+- [x] Add minimize: `#+n`
+- [x] Remap move window: `!Down/!Up` → `!j/!k`
+- [x] Remap maximize: `!+Enter` → `!+m`
+- [x] Remap reset layout: `#^Backspace` → `#+r`
+- [x] Remap margins toggle: `#+n` → `#+b`
+- [x] Remap debug help: `#^h` → `#^+h` (freed `#^h` for StackMX)
+- [ ] Zoom: `#+Enter` → TBD (marked TODO in code)
+- [ ] Remap layout cycle: `#Space` → next, `#+Space` → prev (currently taskbar/bar toggle)
+- [ ] Remap floating toggle to `#^Space` (currently `#+f`)
+- [ ] Remap bar toggle to `#+b` (currently `#+Space`; `#+b` is margins)
 - [ ] Remap quit: `#^q` → `#+q`
-- [ ] Add minimize: `#n`
-- [ ] Add spawn terminal: `#Return` → `Run, wt.exe`
+- [x] Add spawn terminal: `#Return` → `Run, alacritty`
 - [ ] Remap prev view: `#BackSpace` → `#Escape`
 - [ ] Verify all bindings work end-to-end
 

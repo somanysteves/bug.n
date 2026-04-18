@@ -13,8 +13,6 @@
   @version 9.1.0
 */
 
-; @Ahk2Exe-UpdateManifest 1
-
 NAME  := "bug.n"
 VERSION := "9.1.0"
 

@@ -28,6 +28,8 @@ View_init(m, v)
   View_#%m%_#%v%_layoutMFact    := Config_layoutMFactor
   View_#%m%_#%v%_layoutMX       := 1
   View_#%m%_#%v%_layoutMY       := 1
+  View_#%m%_#%v%_layoutStackMX  := Config_layoutStackMX
+  View_#%m%_#%v%_layoutStackMY  := Config_layoutStackMY
   View_#%m%_#%v%_layoutSymbol   := Config_layoutSymbol_#1
   View_#%m%_#%v%_margins        := "0;0;0;0"
   View_#%m%_#%v%_showStackArea  := True
@@ -226,6 +228,8 @@ View_moveToIndex(m, v, n, w) {
   View_#%n%_#%w%_layoutMFact    := View_#%m%_#%v%_layoutMFact
   View_#%n%_#%w%_layoutMX       := View_#%m%_#%v%_layoutMX
   View_#%n%_#%w%_layoutMY       := View_#%m%_#%v%_layoutMY
+  View_#%n%_#%w%_layoutStackMX  := View_#%m%_#%v%_layoutStackMX
+  View_#%n%_#%w%_layoutStackMY  := View_#%m%_#%v%_layoutStackMY
   View_#%n%_#%w%_layoutSymbol   := View_#%m%_#%v%_layoutSymbol
   View_#%n%_#%w%_margins        := View_#%m%_#%v%_margins
   View_#%n%_#%w%_showStackArea  := View_#%m%_#%v%_showStackArea
@@ -272,11 +276,13 @@ View_resetTileLayout() {
   View_#%m%_#%v%_layoutMFact    := Config_layoutMFactor
   View_#%m%_#%v%_layoutMX       := 1
   View_#%m%_#%v%_layoutMY       := 1
+  View_#%m%_#%v%_layoutStackMX  := Config_layoutStackMX
+  View_#%m%_#%v%_layoutStackMY  := Config_layoutStackMY
   View_#%m%_#%v%_layoutSymbol   := Config_layoutSymbol_#1
   View_#%m%_#%v%_margins        := "0;0;0;0"
   View_#%m%_#%v%_showStackArea  := True
   StringSplit, View_#%m%_#%v%_margin, View_#%m%_#%v%_margins, `;
-  
+
   If Tiler_isActive(m, v)
     View_arrange(m, v)
 }
@@ -340,6 +346,10 @@ View_setLayoutProperty(name, i, d, opt = 0) {
       a := Tiler_setMX(Manager_aMonitor, v, d)
     Else If (name = "MY")
       a := Tiler_setMY(Manager_aMonitor, v, d)
+    Else If (name = "StackMX")
+      a := Tiler_setStackMX(Manager_aMonitor, v, d)
+    Else If (name = "StackMY")
+      a := Tiler_setStackMY(Manager_aMonitor, v, d)
   }
   If (name = "GapWidth") And (Tiler_isActive(Manager_aMonitor, v) Or (Config_layoutFunction_#%l% = "monocle"))
     a := View_setGapWidth(i, d)
