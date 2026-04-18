@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(powershell *)",
+      "Bash(cmd /c build.bat)",
+      "Bash(git add *)",
+      "Bash(curl *)"
+    ]
+  }
+}
