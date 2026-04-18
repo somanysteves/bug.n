@@ -14,9 +14,9 @@ if not exist %AHK_V1_BIN% (
     exit /b 1
 )
 
-%AHK2EXE% /in "%~dp0src\Main.ahk" /out "%~dp0bugn.exe" /icon "%~dp0src\logo.ico" /bin %AHK_V1_BIN%
+%AHK2EXE% /silent verbose /in "%~dp0src\Main.ahk" /out "%~dp0bugn.exe" /icon "%~dp0src\logo.ico" /bin %AHK_V1_BIN%
 if errorlevel 1 (
-    echo ERROR: Build failed.
+    echo ERROR: Build failed with exit code %errorlevel%.
     exit /b 1
 )
 
