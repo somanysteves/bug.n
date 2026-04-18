@@ -66,7 +66,7 @@ Config_init() {
   Config_layoutAxis_#2      := 2
   Config_layoutAxis_#3      := 2
   Config_layoutGapWidth     := 0
-  Config_layoutMFactor      := 0.6
+  Config_layoutMFactor      := 0.55
   Config_layoutStackMX      := 1
   Config_layoutStackMY      := 1
   Config_areaTraceTimeout   := 1000
@@ -533,4 +533,4 @@ Config_UI_saveSession() {
 #^e::Config_edit()
 #^s::Config_UI_saveSession()
 #^r::Reload
-#^q::ExitApp
+#+q::ExitApp

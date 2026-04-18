@@ -25,12 +25,12 @@
 - [ ] Zoom: `#+Enter` → TBD (marked TODO in code)
 - [ ] Remap layout cycle: `#Space` → next, `#+Space` → prev (both freed)
 - [ ] Remap floating toggle to `#^Space` (currently `#+f`)
-- [ ] Remap quit: `#^q` → `#+q`
+- [x] Remap quit: `#^q` → `#+q`
 - [x] Add spawn terminal: `#Return` → `Run, alacritty`
 - [ ] Remap prev view: `#BackSpace` → `#Escape`
 - [ ] Verify all bindings work end-to-end
 
 ## 3. Tiling Defaults — Match AwesomeWM Stock Tile
-- [ ] Change `Config_layoutMFactor` from `0.6` → `0.55`
-- [ ] Change `Config_layoutGapWidth` from `0` → `4`
-- [ ] Verify layout: master left (~55%), stack top-to-bottom on right, 4px gaps
+- [x] Change `Config_layoutMFactor` from `0.6` → `0.55`
+- [x] ~~Change `Config_layoutGapWidth` from `0` → `4`~~ — keeping gaps at 0 intentionally
+- [ ] Verify layout: master left (~55%), stack top-to-bottom on right, no gaps
