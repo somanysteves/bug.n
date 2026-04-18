@@ -13,7 +13,7 @@
 - [x] Remap close: `#c` → `#+c`
 - [x] Remap master resize: `#Left/#Right` → `#h/#;`
 - [x] Add nmaster Y: `#+h` / `#+;` (increase/decrease master row count)
-- [x] Add StackMX grid: `#^h` / `#^;` (increase/decrease stack columns)
+- [x] Add StackMX grid: `#^h` / `#^;` (increase/decrease stack columns — column-first AwesomeWM distribution)
 - [x] Add minimize: `#+n`
 - [x] Remap move window: `!Down/!Up` → `!j/!k`
 - [x] Remap maximize: `!+Enter` → `!+m`

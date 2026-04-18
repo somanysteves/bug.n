@@ -115,7 +115,7 @@ Tiler_isActive(m, v) {
 Tiler_layoutTiles(m, v, x, y, w, h, type = "") {
   Local axis1, axis2, axis3, gapW, hasStackArea, mFact, mSplit, mXSet, mYSet, mYActual, n
   Local h1, h2, mWndCount, stackLen, subAreaCount, subAreaWndCount, subH1, subW1, subX1, subY1, w1, w2, x1, x2, y1, y2
-  Local stackMX, stackMY, stackGridSize, stackSubAreaCount, stackWndCount, stackX, stackY, stackW, stackH, stackSubX, stackSubY, stackSubW, stackSubH, stackRowWndCount
+  Local stackMX, stackMY, stackSubAreaCount, stackColWndCount, stackWndCount, stackX, stackY, stackW, stackH, stackSubX, stackSubY, stackSubW, stackSubH
 
   axis1  := Abs(View_#%m%_#%v%_layoutAxis_#1)
   axis2  := View_#%m%_#%v%_layoutAxis_#2
@@ -181,29 +181,27 @@ Tiler_layoutTiles(m, v, x, y, w, h, type = "") {
       stackLen := View_tiledWndId0 - mSplit
       stackMX := View_#%m%_#%v%_layoutStackMX
       stackMY := View_#%m%_#%v%_layoutStackMY
-      stackGridSize := stackMX * stackMY
 
-      ;; Determine if we should use grid layout
       ;; Grid is used if stackMX > 1, otherwise fall back to single-axis stacking
       If (stackMX > 1) {
-        ;; Grid layout: split stack area into rows and columns
-        Debug_logMessage("DEBUG[2] Tiler_layoutTiles: Stack grid " stackMX "x" stackMY ", " stackLen " windows", 2)
-        stackSubAreaCount := stackMY
+        ;; Column-first grid layout (AwesomeWM-style): distribute windows into columns
+        ;; using floor(remaining / remaining_cols), rightmost column absorbs extras
         stackWndCount := stackLen
         stackX := x2
         stackY := y2
         stackW := w2
         stackH := h2
-
-        Loop, % stackMY {
-          Tiler_splitArea(1, 1 / stackSubAreaCount, stackX, stackY, stackW, stackH, gapW, stackSubX, stackSubY, stackSubW, stackSubH, stackX, stackY, stackW, stackH)
-          stackRowWndCount := stackMX
-          If (stackWndCount < stackRowWndCount)
-            stackRowWndCount := stackWndCount
-          Debug_logMessage("DEBUG[3] Tiler_layoutTiles: Stack row #" A_Index " with " stackRowWndCount " windows", 3)
-          Tiler_stackTiles(m, v, mSplit + stackLen - stackWndCount + 1, stackRowWndCount, +1, 1, stackSubX, stackSubY, stackSubW, stackSubH, gapW, type)
-          stackWndCount -= stackRowWndCount
-          stackSubAreaCount -= 1
+        Loop, % stackMX {
+          If (stackWndCount <= 0)
+            Break
+          stackSubAreaCount := stackMX - A_Index + 1
+          stackColWndCount := Floor(stackWndCount / stackSubAreaCount)
+          If (stackColWndCount < 1)
+            stackColWndCount := 1
+          Tiler_splitArea(0, 1 / stackSubAreaCount, stackX, stackY, stackW, stackH, gapW, stackSubX, stackSubY, stackSubW, stackSubH, stackX, stackY, stackW, stackH)
+          Debug_logMessage("DEBUG[3] Tiler_layoutTiles: Stack col #" A_Index " with " stackColWndCount " windows", 3)
+          Tiler_stackTiles(m, v, mSplit + stackLen - stackWndCount + 1, stackColWndCount, +1, 2, stackSubX, stackSubY, stackSubW, stackSubH, gapW, type)
+          stackWndCount -= stackColWndCount
         }
       } Else {
         ;; Single-axis layout (original behavior)
