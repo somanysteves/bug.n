@@ -481,7 +481,6 @@ Config_UI_saveSession() {
 #+r::View_resetTileLayout()
 
 ;; View/Tag management
-#+b::View_toggleMargins()
 #BackSpace::Monitor_activateView(-1)
 #+0::Monitor_setWindowTag(10)
 #1::Monitor_activateView(1)
@@ -523,8 +522,8 @@ Config_UI_saveSession() {
 #^+,::Manager_setViewMonitor(0, -1)
 
 ;; GUI management
-#+Space::Monitor_toggleBar()
-#Space::Monitor_toggleTaskBar()
+#^b::Monitor_toggleBar()
+#b::Monitor_toggleTaskBar()
 #Return::Run, alacritty
 #y::Bar_toggleCommandGui()
 #+y::Monitor_toggleNotifyIconOverflowWindow()

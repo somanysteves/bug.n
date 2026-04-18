@@ -19,11 +19,12 @@
 - [x] Remap maximize: `!+Enter` → `!+m`
 - [x] Remap reset layout: `#^Backspace` → `#+r`
 - [x] Remap margins toggle: `#+n` → `#+b`
+- [x] Drop margins keybind (margins disabled); `#b` → toggle Windows taskbar (`Monitor_toggleTaskBar`)
+- [x] Remap bug.n bar toggle: `#+Space` → `#^b` (`Monitor_toggleBar`)
 - [x] Remap debug help: `#^h` → `#^+h` (freed `#^h` for StackMX)
 - [ ] Zoom: `#+Enter` → TBD (marked TODO in code)
-- [ ] Remap layout cycle: `#Space` → next, `#+Space` → prev (currently taskbar/bar toggle)
+- [ ] Remap layout cycle: `#Space` → next, `#+Space` → prev (both freed)
 - [ ] Remap floating toggle to `#^Space` (currently `#+f`)
-- [ ] Remap bar toggle to `#+b` (currently `#+Space`; `#+b` is margins)
 - [ ] Remap quit: `#^q` → `#+q`
 - [x] Add spawn terminal: `#Return` → `Run, alacritty`
 - [ ] Remap prev view: `#BackSpace` → `#Escape`
