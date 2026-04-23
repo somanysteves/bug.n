@@ -1,17 +1,29 @@
-$root   = $PSScriptRoot
+$root    = $PSScriptRoot
 $ahk2exe = 'C:\Program Files\AutoHotkey\Compiler\Ahk2Exe.exe'
 $bin     = 'C:\Program Files\AutoHotkey\v1.1.37.02\Unicode 64-bit.bin'
 
 if (-not (Test-Path $ahk2exe)) { Write-Error "Ahk2Exe not found: $ahk2exe"; exit 1 }
 if (-not (Test-Path $bin))     { Write-Error "AHK v1 bin not found: $bin";   exit 1 }
 
-Stop-Process -Name bugn -ErrorAction SilentlyContinue
+$buildDir = Join-Path $root 'build'
+$distDir  = Join-Path $root 'dist'
+$buildExe = Join-Path $buildDir 'bugn.exe'
+$distExe  = Join-Path $distDir  'bugn.exe'
 
-Start-Process -FilePath $ahk2exe -ArgumentList "/in","`"$root\src\Main.ahk`"","/out","`"$root\bugn.exe`"","/icon","`"$root\src\logo.ico`"","/bin","`"$bin`"" -Wait -NoNewWindow
+if (-not (Test-Path $buildDir)) { New-Item -ItemType Directory -Path $buildDir | Out-Null }
 
-if (Test-Path "$root\bugn.exe") {
-    Write-Host "Build complete: bugn.exe"
-} else {
-    Write-Error "Build failed: bugn.exe was not created"
+Start-Process -FilePath $ahk2exe -ArgumentList "/in","`"$root\src\Main.ahk`"","/out","`"$buildExe`"","/icon","`"$root\src\logo.ico`"","/bin","`"$bin`"" -Wait -NoNewWindow
+
+if (-not (Test-Path $buildExe)) {
+    Write-Error "Build failed: $buildExe was not created"
     exit 1
+}
+Write-Host "Build complete: build\bugn.exe"
+
+if (-not (Test-Path $distDir)) { New-Item -ItemType Directory -Path $distDir | Out-Null }
+try {
+    Copy-Item $buildExe $distExe -Force -ErrorAction Stop
+    Write-Host "Copied to: dist\bugn.exe"
+} catch {
+    Write-Warning "Could not copy to dist\bugn.exe (probably locked by a running bug.n). Fresh build is in build\bugn.exe."
 }
