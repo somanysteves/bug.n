@@ -422,7 +422,7 @@ Config_UI_saveSession() {
 ;; Window management
 #j::View_activateWindow(0, +1)
 #k::View_activateWindow(0, -1)
-#+j::View_shuffleWindow(-1, +1)
+#+j::View_shuffleWindow(0, +1)
 #+k::View_shuffleWindow(0, -1)
 ;; TODO
 #+Enter::View_shuffleWindow(1)

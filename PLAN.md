@@ -34,3 +34,49 @@
 - [x] Change `Config_layoutMFactor` from `0.6` → `0.55`
 - [x] ~~Change `Config_layoutGapWidth` from `0` → `4`~~ — keeping gaps at 0 intentionally
 - [ ] Verify layout: master left (~55%), stack top-to-bottom on right, no gaps
+
+## 4. Fix Win+Shift+J Wrap + Build View-State Test Harness (TDD)
+
+**Bug:** `Win+Shift+J` (shuffle window down) gets stuck at the bottom instead of
+wrapping to the top. `Win+Shift+K` (up) wraps top→bottom correctly. Root cause:
+`src/Config.ahk:425` binds `View_shuffleWindow(-1, +1)` — the `-1` threads through
+to `Manager_loop(-1, +1, 1, n)`, which always collapses to `n`. Should be
+`View_shuffleWindow(0, +1)` to match `#+k`'s `(0, -1)` form and the docs
+(`doc/Default_hotkeys.md:37`, `doc/User-hotkeys.md:66`).
+
+**Approach (TDD):** A one-character Config fix isn't directly unit-testable at the
+logic layer — `Manager_loop` math doesn't change. To make a red-then-green test
+for the behavior, we're investing in reusable test scaffolding for
+`View_shuffleWindow` (and most other window-management functions), rather than a
+shallow source-parse test. Expected payoff: unlocks unit tests for
+`View_activateWindow`, `View_toggleFloatingWindow`, `Manager_moveWindow`,
+`Manager_minimizeWindow`, `Manager_closeWindow`, `View_setMFactor`,
+`View_setLayout`, `Manager_activateMonitor`, etc.
+
+- [x] Tier A characterization test: `Manager_loop(-1, +1, 1, n) = n` documented
+      in `tests/test_Manager_loop.ahk`. Keep for documentation — explains
+      the *mechanism* of the J bug even after the hotkey is fixed.
+- [x] **Scaffolding refactor (no behavior change):**
+   - [x] `Window_getActiveId()` wrapper in `src/Window.ahk`.
+   - [x] Optional `aWndId = ""` parameter threaded through `View_shuffleWindow`.
+   - [x] Extract `View_arrange`, `Manager_setCursor`, `View_getTiledWndIds`
+         into swappable files (`src/View_arrange.ahk`,
+         `src/Manager_setCursor.ahk`, `src/View_getTiledWndIds.ahk`).
+   - [x] `tests/stubs_io.ahk` loads no-op / OS-bypass versions.
+- [x] **Test helpers:**
+   - [x] `tests/helpers/view_state.ahk` — `ViewState_setupTiled`,
+         `ViewState_teardown`, `ViewState_getOrderedWndIds`,
+         `ViewState_parseShuffleBinding`.
+- [x] **Red-then-green J fix:**
+   - [x] `tests/test_View_shuffleWindow.ahk` — exercises the actual `#+j`/`#+k`
+         Config bindings via `ViewState_parseShuffleBinding`, so the test's
+         red-then-green status is coupled to the Config.ahk fix.
+   - [x] `src/Config.ahk:425` → `View_shuffleWindow(0, +1)`. Tests go green.
+
+**Caveats:**
+- Yunit / AHK v1 has no real mocking — stubs are `#Include`-time file swaps.
+  Fine for most cases; a test can't flip stub behavior mid-test.
+- First 1–2 harness tests may surface unknown global side-effects in
+  `View_shuffleWindow`; expect minor follow-up on the setup helpers.
+- CI already runs on Windows w/ real AHK; stubbing OS calls means these tests
+  don't need a desktop session.

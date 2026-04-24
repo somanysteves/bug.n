@@ -100,4 +100,26 @@ class TestManagerLoop
   {
     Yunit.Assert(Manager_loop(1, 1, 1, -1) = 0, "loop(1,+1,1,-1) expected 0 (ub<=0), got " . Manager_loop(1, 1, 1, -1))
   }
+
+  ;; --- characterization: index = -1 collapses to upperBound ---
+  ;;
+  ;; Documents a quirk that Config.ahk:425 currently relies on inadvertently.
+  ;; The default Win+Shift+J binding is `View_shuffleWindow(-1, +1)`, which
+  ;; threads i=-1 straight through to Manager_loop(-1, +1, 1, n). That always
+  ;; returns n — so pressing Win+Shift+J teleports the active window to the
+  ;; bottom slot in one shot and keeps it there. Win+Shift+K uses `(0, -1)`
+  ;; and goes through the i := j branch in View_shuffleWindow, so it wraps
+  ;; correctly (covered by BackwardStep_WrapsAtLowerBound above).
+  ;;
+  ;; This test captures the current behavior so it can be flipped when the
+  ;; hotkey is fixed to `(0, +1)` — at that point J should behave the same
+  ;; as ForwardStep_WrapsAtUpperBound, not like this.
+
+  IndexNegativeOne_ForwardStep_CollapsesToUpperBound()
+  {
+    Yunit.Assert(Manager_loop(-1, 1, 1, 2) = 2, "loop(-1,+1,1,2) expected 2, got " . Manager_loop(-1, 1, 1, 2))
+    Yunit.Assert(Manager_loop(-1, 1, 1, 3) = 3, "loop(-1,+1,1,3) expected 3, got " . Manager_loop(-1, 1, 1, 3))
+    Yunit.Assert(Manager_loop(-1, 1, 1, 5) = 5, "loop(-1,+1,1,5) expected 5, got " . Manager_loop(-1, 1, 1, 5))
+    Yunit.Assert(Manager_loop(-1, 1, 1, 7) = 7, "loop(-1,+1,1,7) expected 7, got " . Manager_loop(-1, 1, 1, 7))
+  }
 }
