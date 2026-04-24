@@ -186,9 +186,11 @@ Return
 #Include %A_ScriptDir%\Config.ahk
 #Include %A_ScriptDir%\Debug.ahk
 #Include %A_ScriptDir%\Manager.ahk
+#Include %A_ScriptDir%\Manager_setCursor.ahk
 #Include %A_ScriptDir%\Monitor.ahk
 #Include %A_ScriptDir%\ResourceMonitor.ahk
 #Include %A_ScriptDir%\Tiler.ahk
 #Include %A_ScriptDir%\View.ahk
+#Include %A_ScriptDir%\View_arrange.ahk
 #Include %A_ScriptDir%\Window.ahk
 #Include %A_ScriptDir%\MonitorManager.ahk

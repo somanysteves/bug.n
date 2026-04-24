@@ -25,7 +25,12 @@ ExitApp, % TEST_FAIL_COUNT
 ;; Stubs for Main.ahk-resident symbols
 #Include %A_ScriptDir%\stubs.ahk
 
-;; src/*.ahk (everything except Main.ahk)
+;; Stubs for IO-heavy src/ symbols (View_arrange, Manager_setCursor).
+;; Loaded *instead of* src/View_arrange.ahk and src/Manager_setCursor.ahk
+;; — those real files are intentionally NOT #Included below.
+#Include %A_ScriptDir%\stubs_io.ahk
+
+;; src/*.ahk (everything except Main.ahk, View_arrange.ahk, Manager_setCursor.ahk)
 #Include %A_ScriptDir%\..\src\Bar.ahk
 #Include %A_ScriptDir%\..\src\Config.ahk
 #Include %A_ScriptDir%\..\src\Debug.ahk

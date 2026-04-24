@@ -13,6 +13,15 @@
   @version 9.1.0
 */
 
+;; Returns the currently-active OS window's ID. Thin wrapper around
+;; `WinGet, <var>, ID, A` so callers can accept an injected active
+;; window ID (useful for unit tests that don't have a real OS focus).
+Window_getActiveId() {
+  Local aWndId
+  WinGet, aWndId, ID, A
+  Return, aWndId
+}
+
 Window_activate(wndId) {
   If Window_isHung(wndId) {
     Debug_logMessage("DEBUG[2] Window_activate: Potentially hung window " . wndId, 2)
