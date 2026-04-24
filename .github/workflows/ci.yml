@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: [master]
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install AutoHotkey + export AHK_EXE / AHK2EXE / AHK_V1_BIN
+        shell: pwsh
+        run: .\tools\install-ahk.ps1 -OutDir "$env:RUNNER_TEMP\AutoHotkey"
+
+      - name: Build bugn.exe
+        shell: cmd
+        run: build.bat
+
+      - name: Run unit tests
+        shell: cmd
+        run: test.bat
+
+      - name: Upload bugn.exe artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bugn-exe
+          path: build/bugn.exe
