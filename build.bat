@@ -1,22 +1,28 @@
 @echo off
 setlocal
 
-set AHK2EXE="C:\Program Files\AutoHotkey\Compiler\Ahk2Exe.exe"
-set AHK_V1_BIN="C:\Program Files\AutoHotkey\v1.1.37.02\Unicode 64-bit.bin"
+if not defined AHK2EXE set AHK2EXE=C:\Program Files\AutoHotkey\Compiler\Ahk2Exe.exe
+if not defined AHK_V1_BIN set AHK_V1_BIN=C:\Program Files\AutoHotkey\v1.1.37.02\Unicode 64-bit.bin
+rem Strip any surrounding quotes from overrides so we can quote consistently at use time.
+set AHK2EXE=%AHK2EXE:"=%
+set AHK_V1_BIN=%AHK_V1_BIN:"=%
 
-if not exist %AHK2EXE% (
-    echo ERROR: Ahk2Exe not found. Install AutoHotkey from https://www.autohotkey.com/download/
+if not exist "%AHK2EXE%" (
+    echo ERROR: Ahk2Exe not found at %AHK2EXE%.
+    echo Install AutoHotkey from https://www.autohotkey.com/download/
+    echo Or set the AHK2EXE environment variable to an alternate path.
     exit /b 1
 )
 
-if not exist %AHK_V1_BIN% (
-    echo ERROR: AutoHotkey v1 not found. Install v1.1.x alongside v2.
+if not exist "%AHK_V1_BIN%" (
+    echo ERROR: AutoHotkey v1 base file not found at %AHK_V1_BIN%.
+    echo Install v1.1.x alongside v2, or set AHK_V1_BIN to an alternate path.
     exit /b 1
 )
 
 if not exist "%~dp0build" mkdir "%~dp0build"
 
-%AHK2EXE% /silent verbose /in "%~dp0src\Main.ahk" /out "%~dp0build\bugn.exe" /icon "%~dp0src\logo.ico" /bin %AHK_V1_BIN%
+"%AHK2EXE%" /silent verbose /in "%~dp0src\Main.ahk" /out "%~dp0build\bugn.exe" /icon "%~dp0src\logo.ico" /bin "%AHK_V1_BIN%"
 if errorlevel 1 (
     echo ERROR: Build failed with exit code %errorlevel%.
     exit /b 1

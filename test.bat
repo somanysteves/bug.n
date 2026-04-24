@@ -1,11 +1,14 @@
 @echo off
 setlocal
 
-set AHK_EXE="C:\Program Files\AutoHotkey\v1.1.37.02\AutoHotkeyU64.exe"
+if not defined AHK_EXE set AHK_EXE=C:\Program Files\AutoHotkey\v1.1.37.02\AutoHotkeyU64.exe
+rem Strip any surrounding quotes from an override so we can quote consistently at use time.
+set AHK_EXE=%AHK_EXE:"=%
 
-if not exist %AHK_EXE% (
+if not exist "%AHK_EXE%" (
     echo ERROR: AutoHotkey v1.1 interpreter not found at %AHK_EXE%.
     echo Install AutoHotkey v1.1.x from https://www.autohotkey.com/download/
+    echo Or set the AHK_EXE environment variable to an alternate path.
     exit /b 1
 )
 
@@ -20,7 +23,7 @@ if not exist "%~dp0tests\vendor\Yunit\Yunit.ahk" (
     )
 )
 
-%AHK_EXE% /ErrorStdOut "%~dp0tests\run.ahk"
+"%AHK_EXE%" /ErrorStdOut "%~dp0tests\run.ahk"
 set RC=%errorlevel%
 
 if %RC%==0 (
