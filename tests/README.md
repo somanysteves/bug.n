@@ -26,8 +26,14 @@ tests/
 ## Writing new tests
 
 1. Create `tests/test_Foo.ahk` with a class whose methods are test cases (see `test_Tiler.ahk` for the pattern).
-2. In `run.ahk`, `#Include` the source file under test (after `stubs.ahk`) and the new test file, and add the test class to the `Yunit.Use(CIReporter).Test(...)` call.
-3. If the source file references symbols at load time that you don't want to pull in, add no-op stubs to `stubs.ahk`.
+2. In `run.ahk`, `#Include` the new test file and add the test class to the `Yunit.Use(CIReporter).Test(...)` call. Source files are already all loaded.
+3. If a new source file is added to `src/` and references a symbol defined only in `Main.ahk`, add a no-op stub for it to `stubs.ahk`.
+
+## Runner structure: why `#Include` lives at the bottom
+
+`run.ahk` puts its executable code (counter init, `Yunit.Use(...).Test(...)`, summary, `ExitApp`) at the top and every `#Include` directive at the bottom. This mirrors `src/Main.ahk` and is load-bearing: AHK v1's auto-execute section runs top-to-bottom until it hits a `Return`, `Exit`, or `ExitApp`. Library files like `Bar.ahk` contain top-level label blocks (e.g. `Bar_cmdGuiEnter: ... Return`) — if they're `#Include`'d *before* the test invocation, their first `Return` inlines into auto-execute and terminates it prematurely, so `Yunit.Use(...).Test(...)` never runs. Putting `#Include` after `ExitApp` parses the files (so functions/classes/labels are defined) without inlining their code into the auto-execute flow.
+
+One consequence: any top-level initialization inside an included file (like `global FOO := 0`) also won't run. That's why `CIReporter.ahk` *defines* the reporter class but `run.ahk`'s auto-execute block initializes the counter globals explicitly.
 
 ## Updating or pinning Yunit
 

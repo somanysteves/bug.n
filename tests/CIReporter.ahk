@@ -2,10 +2,10 @@
   Yunit output module for CI runs. Prints PASS/FAIL lines to stdout (same
   format as vendor/Yunit/Stdout.ahk) and increments TEST_FAIL_COUNT on
   failure so the runner can exit with a non-zero status.
-*/
 
-global TEST_FAIL_COUNT := 0
-global TEST_PASS_COUNT := 0
+  The counter globals are initialized in run.ahk's auto-execute block;
+  this file only defines the module class.
+*/
 
 class CIReporter
 {

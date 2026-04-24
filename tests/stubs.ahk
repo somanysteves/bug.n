@@ -1,26 +1,11 @@
 /*
-  Test-only stubs for symbols referenced at load time by src/ files but
-  not exercised by the functions under test. AHK v1 resolves function
-  references eagerly, so including a source file requires every callee
-  to be defined somewhere — these no-ops satisfy that requirement.
-
-  If a test ever needs the real behaviour of one of these, either include
-  the real source file ahead of this stub, or delete the stub and pull in
-  the real dependency.
+  Test-only stubs for symbols that live in src/Main.ahk and therefore
+  can't be included in the test runner (Main.ahk has an auto-execute
+  section that would actually start bug.n). Every other src/ file is
+  loaded for real by tests/run.ahk.
 */
 
-Debug_logMessage(msg, level := 0) {
-  ; no-op
-}
-
-Window_move(wndId, x, y, w, h) {
-  ; no-op
-}
-
-Manager_loop(index, increment, lowerBound, upperBound) {
-  ; stub — real implementation at src/Manager.ahk:296. Tiler_setAxis
-  ; references it, but no current test exercises that path. When a suite
-  ; covers Manager_loop (or Tiler_setAxis) directly, drop this stub and
-  ; include the real source.
-  Return, 0
+Main_evalCommand(command) {
+  ; no-op — command-dispatch function defined in src/Main.ahk:70.
+  ; Tests don't exercise callers that would invoke it.
 }
