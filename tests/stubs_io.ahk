@@ -32,3 +32,32 @@ Manager_setCursor(wndId) {
   Test_managerSetCursorCallCount += 1
   Test_managerSetCursorLastWndId := wndId
 }
+
+;; Test-only replacement for View_getTiledWndIds. The production
+;; version (src/View_getTiledWndIds.ahk) filters the view's wndIds
+;; list with WinExist + Window_isHung, which rejects fake test window
+;; IDs. This stub trusts the list wholesale — tests are responsible
+;; for populating View_#%m%_#%v%_wndIds with only the IDs they want
+;; treated as tiled, and for setting Window_#%id%_isFloating if that
+;; matters to the scenario (default: not floating).
+View_getTiledWndIds(m, v)
+{
+  Local n, tiledWndIds, wndIds
+
+  n := 0
+  tiledWndIds := ""
+  StringTrimRight, wndIds, View_#%m%_#%v%_wndIds, 1
+  Loop, PARSE, wndIds, `;
+  {
+    If A_LoopField And Not Window_#%A_LoopField%_isFloating
+    {
+      n += 1
+      tiledWndIds .= A_LoopField ";"
+    }
+  }
+  View_tiledWndIds := tiledWndIds
+  StringTrimRight, tiledWndIds, tiledWndIds, 1
+  StringSplit, View_tiledWndId, tiledWndIds, `;
+
+  Return, n
+}

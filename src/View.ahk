@@ -150,27 +150,8 @@ View_getActiveWindow(m, v) {
   Return, wndId
 }
 
-View_getTiledWndIds(m, v)
-{
-  Local n, tiledWndIds, wndIds
-
-  n := 0
-  tiledWndIds := ""
-  StringTrimRight, wndIds, View_#%m%_#%v%_wndIds, 1
-  Loop, PARSE, wndIds, `;
-  {
-    If A_LoopField And Not Window_#%A_LoopField%_isFloating And WinExist("ahk_id " A_LoopField) and Not Window_isHung(A_LoopField)
-    {
-      n += 1
-      tiledWndIds .= A_LoopField ";"
-    }
-  }
-  View_tiledWndIds := tiledWndIds
-  StringTrimRight, tiledWndIds, tiledWndIds, 1
-  StringSplit, View_tiledWndId, tiledWndIds, `;
-
-  Return, n
-}
+;; View_getTiledWndIds lives in src/View_getTiledWndIds.ahk so tests
+;; can stub it out. See tests/README.md for the stub-swap pattern.
 
 View_ghostWindow(m, v, bodyWndId, ghostWndId)
 {
