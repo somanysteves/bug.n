@@ -20,7 +20,9 @@ param(
 $ErrorActionPreference = 'Stop'
 
 if (-not $ZipUrl) {
-  $ZipUrl = "https://www.autohotkey.com/download/1.1/AutoHotkey_$Version.zip"
+  # GitHub release — autohotkey.com is behind a Cloudflare JS challenge that
+  # blocks GitHub Actions runner IPs.
+  $ZipUrl = "https://github.com/AutoHotkey/AutoHotkey/releases/download/v$Version/AutoHotkey_$Version.zip"
 }
 if (-not $ZipCache) {
   $ZipCache = Join-Path $env:TEMP "AutoHotkey_$Version.zip"
