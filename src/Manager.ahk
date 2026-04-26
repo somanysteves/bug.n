@@ -453,27 +453,107 @@ Manager_moveWindow() {
 }
 
 Manager_onDisplayChange(a, wParam, uMsg, lParam) {
-  Local doChange := (Config_monitorDisplayChangeMessages = "on")
-  
+  Global Config_monitorDisplayChangeMessages, Manager_displayChangeSessionChoice
+
   Debug_logMessage("DEBUG[1] Manager_onDisplayChange( a: " . a . ", uMsg: " . uMsg . ", wParam: " . wParam . ", lParam: " . lParam . " )", 1)
-  If !(Config_monitorDisplayChangeMessages = "on" || Config_monitorDisplayChangeMessages = "off" || Config_monitorDisplayChangeMessages = 0) {
-    MsgBox, 291, , % "Would you like to reset the monitor configuration?`n'No' will only rearrange all active views.`n'Cancel' will result in no change."
-    IfMsgBox Yes
-      doChange := True
-    Else IfMsgBox No
-    {
-      Loop, % Manager_monitorCount {
-        View_arrange(A_Index, Monitor_#%A_Index%_aView_#1)
-        Bar_updateView(A_Index, Monitor_#%A_Index%_aView_#1)
-      }
-      Bar_updateStatus()
-      Bar_updateTitle()
-    }
+
+  decision := Manager_displayChangeDecide(Config_monitorDisplayChangeMessages, Manager_displayChangeSessionChoice)
+  If (decision = "prompt") {
+    Manager_displayChangePrompt(choice, remember)
+    Manager_displayChangeRecordSessionChoice(choice, remember)
+    decision := Manager_displayChangeDecide(Config_monitorDisplayChangeMessages, choice)
   }
-  If (doChange) {
+  Manager_displayChangeApply(decision)
+}
+
+;; Returns the action to take for a WM_DISPLAYCHANGE event, given the
+;; persistent config setting and any session-only override the user picked
+;; via the "remember this decision for this session" checkbox.
+;;   "reset"     -> Manager_resetMonitorConfiguration (re-detect monitors)
+;;   "rearrange" -> redraw active views without re-detecting monitors
+;;   "ignore"    -> no-op
+;;   "prompt"    -> caller should show the dialog
+Manager_displayChangeDecide(configValue, sessionChoice) {
+  If (sessionChoice = "yes")
+    Return "reset"
+  If (sessionChoice = "no")
+    Return "rearrange"
+  If (sessionChoice = "cancel")
+    Return "ignore"
+  If (configValue = "on")
+    Return "reset"
+  If (configValue = "off" || configValue = 0)
+    Return "ignore"
+  Return "prompt"
+}
+
+Manager_displayChangeApply(decision) {
+  Global Manager_monitorCount
+
+  If (decision = "reset") {
     Manager_resetMonitorConfiguration()
+  } Else If (decision = "rearrange") {
+    Loop, % Manager_monitorCount {
+      i := A_Index
+      View_arrange(i, Monitor_#%i%_aView_#1)
+      Bar_updateView(i, Monitor_#%i%_aView_#1)
+    }
+    Bar_updateStatus()
+    Bar_updateTitle()
   }
 }
+
+Manager_displayChangeRecordSessionChoice(choice, remember) {
+  Global Manager_displayChangeSessionChoice
+  If (remember)
+    Manager_displayChangeSessionChoice := choice
+}
+
+Manager_displayChangePrompt(ByRef choice, ByRef remember) {
+  Global MgrDispChange_choice, MgrDispChange_remember, MgrDispChange_done
+
+  MgrDispChange_choice   := "cancel"
+  MgrDispChange_remember := False
+  MgrDispChange_done     := False
+
+  Gui, MgrDispChange:New, +OwnDialogs +AlwaysOnTop +ToolWindow, bug.n
+  Gui, MgrDispChange:Add, Text, , Would you like to reset the monitor configuration?`n'No' will only rearrange all active views.`n'Cancel' will result in no change.
+  Gui, MgrDispChange:Add, Checkbox, vMgrDispChange_remember, Remember this decision for this session
+  Gui, MgrDispChange:Add, Button, gMgrDispChange_btnYes Default w80, &Yes
+  Gui, MgrDispChange:Add, Button, gMgrDispChange_btnNo x+10 w80, &No
+  Gui, MgrDispChange:Add, Button, gMgrDispChange_btnCancel x+10 w80, &Cancel
+  Gui, MgrDispChange:Show
+
+  While (!MgrDispChange_done)
+    Sleep, 50
+
+  choice   := MgrDispChange_choice
+  remember := MgrDispChange_remember
+}
+
+;; --- Manager_displayChangePrompt button handlers (script-scope labels) ---
+MgrDispChange_btnYes:
+  Gui, MgrDispChange:Submit, NoHide
+  MgrDispChange_choice := "yes"
+  MgrDispChange_done   := True
+  Gui, MgrDispChange:Destroy
+Return
+
+MgrDispChange_btnNo:
+  Gui, MgrDispChange:Submit, NoHide
+  MgrDispChange_choice := "no"
+  MgrDispChange_done   := True
+  Gui, MgrDispChange:Destroy
+Return
+
+MgrDispChange_btnCancel:
+MgrDispChangeGuiClose:
+MgrDispChangeGuiEscape:
+  Gui, MgrDispChange:Submit, NoHide
+  MgrDispChange_choice := "cancel"
+  MgrDispChange_done   := True
+  Gui, MgrDispChange:Destroy
+Return
 
 /*
   Possible indications for a ...
