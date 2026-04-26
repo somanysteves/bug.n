@@ -3,6 +3,7 @@ name: CI
 on:
   push:
     branches: ['**']
+    tags: ['v*']
   pull_request:
     branches: [master]
 
@@ -34,3 +35,39 @@ jobs:
         with:
           name: bugn-exe
           path: build/bugn.exe
+
+  release:
+    needs: build-and-test
+    if: github.event_name == 'push' && github.repository == 'somanysteves/bug.n' && (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download bugn.exe artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: bugn-exe
+          path: dist
+
+      - name: Publish rolling "latest" pre-release (master)
+        if: github.ref == 'refs/heads/master'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Latest build (master)
+          body: |
+            Auto-built from master at commit ${{ github.sha }}.
+
+            This is a rolling pre-release that updates on every push to master.
+            For stable builds, see the tagged releases.
+          prerelease: true
+          make_latest: false
+          files: dist/bugn.exe
+
+      - name: Publish versioned release (v* tag)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/bugn.exe
+          generate_release_notes: true
