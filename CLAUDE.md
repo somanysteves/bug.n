@@ -23,3 +23,15 @@ Approval to commit is not approval to push. Get explicit verbal "push it" first.
 
 ## Before Posting
 Show proposed wording before posting any comment or PR body. Applies to our fork and upstream alike.
+
+## Always target our fork when opening PRs
+This repo is `somanysteves/bug.n`, a fork of `fuhsjr00/bug.n`. `gh pr create`
+defaults to the **parent** repo (upstream) when run from inside a fork — running
+it without `--repo` will open a PR against `fuhsjr00/bug.n`, which is almost
+never what we want.
+
+Always pass `--repo somanysteves/bug.n` to `gh pr create` unless the user has
+explicitly asked for a cross-fork PR against upstream. Before creating, state
+out loud which repo is being targeted ("opening against `somanysteves/bug.n`")
+so the user can catch a mistake before it becomes a closed PR in someone else's
+notifications.
