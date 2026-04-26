@@ -9,7 +9,7 @@ SetBatchLines, -1
 TEST_PASS_COUNT := 0
 TEST_FAIL_COUNT := 0
 
-Yunit.Use(CIReporter).Test(TestTiler, TestManagerLoop, TestViewShuffleWindow)
+Yunit.Use(CIReporter).Test(TestTiler, TestManagerLoop, TestViewShuffleWindow, TestManagerDisplayChange)
 
 total := TEST_PASS_COUNT + TEST_FAIL_COUNT
 FileAppend, % "`n--- " . TEST_PASS_COUNT . " passed, " . TEST_FAIL_COUNT . " failed (" . total . " total) ---`n", *
@@ -49,3 +49,4 @@ ExitApp, % TEST_FAIL_COUNT
 #Include %A_ScriptDir%\test_Tiler.ahk
 #Include %A_ScriptDir%\test_Manager_loop.ahk
 #Include %A_ScriptDir%\test_View_shuffleWindow.ahk
+#Include %A_ScriptDir%\test_Manager_displayChange.ahk
