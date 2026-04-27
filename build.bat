@@ -30,12 +30,26 @@ if errorlevel 1 (
 
 echo Build complete: build\bugn.exe
 
+"%AHK2EXE%" /silent verbose /in "%~dp0src\Bench_main.ahk" /out "%~dp0build\bugn-bench.exe" /icon "%~dp0src\logo.ico" /bin "%AHK_V1_BIN%"
+if errorlevel 1 (
+    echo ERROR: Bench build failed with exit code %errorlevel%.
+    exit /b 1
+)
+
+echo Build complete: build\bugn-bench.exe
+
 if not exist "%~dp0dist" mkdir "%~dp0dist"
 copy /Y "%~dp0build\bugn.exe" "%~dp0dist\bugn.exe" >nul
 if errorlevel 1 (
     echo WARNING: Could not copy to dist\bugn.exe ^(probably locked by a running bug.n^). Fresh build is in build\bugn.exe.
 ) else (
     echo Copied to: dist\bugn.exe
+)
+copy /Y "%~dp0build\bugn-bench.exe" "%~dp0dist\bugn-bench.exe" >nul
+if errorlevel 1 (
+    echo WARNING: Could not copy to dist\bugn-bench.exe ^(probably locked by a running bench^). Fresh build is in build\bugn-bench.exe.
+) else (
+    echo Copied to: dist\bugn-bench.exe
 )
 
 endlocal

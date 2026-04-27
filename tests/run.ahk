@@ -36,6 +36,7 @@ ExitApp, % TEST_FAIL_COUNT
 #Include %A_ScriptDir%\..\src\Debug.ahk
 #Include %A_ScriptDir%\..\src\Manager.ahk
 #Include %A_ScriptDir%\..\src\Monitor.ahk
+#Include %A_ScriptDir%\..\src\Perf.ahk
 #Include %A_ScriptDir%\..\src\MonitorManager.ahk
 #Include %A_ScriptDir%\..\src\ResourceMonitor.ahk
 #Include %A_ScriptDir%\..\src\Tiler.ahk

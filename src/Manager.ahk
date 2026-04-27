@@ -1218,6 +1218,7 @@ Manager_initial_sync(doRestore) {
 Manager_sync(ByRef wndIds = "")
 {
   Local a, flag, shownWndIds, v, visibleWndIds, wndId
+  Perf_start("Manager_sync")
   a := 0
 
   shownWndIds := ""
@@ -1262,6 +1263,7 @@ Manager_sync(ByRef wndIds = "")
     }
   }
 
+  Perf_end("Manager_sync")
   Return, a
 }
 

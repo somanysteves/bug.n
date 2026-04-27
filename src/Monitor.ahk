@@ -41,6 +41,7 @@ Monitor_init(m, doRestore) {
 Monitor_activateView(i, d = 0) {
   Local aMonitor, aView, aWndId, detectHidden, m, n, wndId, wndIds
 
+  Perf_start("Monitor_activateView")
   aMonitor := Manager_aMonitor
   If (i = -1)
     i := Monitor_#%aMonitor%_aView_#2
@@ -49,11 +50,14 @@ Monitor_activateView(i, d = 0) {
   i := Manager_loop(i, d, 1, Config_viewCount)
 
   Debug_logMessage("DEBUG[1] Monitor_activateView; i: " . i . ", d: " . d . ", Manager_aMonitor: " . aMonitor . ", wndIds: " . View_#%Manager_aMonitor%_#%i%_wndIds, 1)
-  If (i <= 0) Or (i > Config_viewCount) Or Manager_hideShow
+  If (i <= 0) Or (i > Config_viewCount) Or Manager_hideShow {
+    Perf_end("Monitor_activateView")
     Return
+  }
   ;; Re-arrange the windows on the active view.
   If (i = Monitor_#%aMonitor%_aView_#1) {
     View_arrange(aMonitor, i)
+    Perf_end("Monitor_activateView")
     Return
   }
 
@@ -107,6 +111,7 @@ Monitor_activateView(i, d = 0) {
 
   wndId := View_getActiveWindow(aMonitor, i)
   Manager_winActivate(wndId)
+  Perf_end("Monitor_activateView")
 }
 
 Monitor_find(d, n) {

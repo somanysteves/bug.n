@@ -350,6 +350,7 @@ Tiler_splitArea(axis, splitRatio, x, y, w, h, gapW, ByRef x1, ByRef y1, ByRef w1
 Tiler_stackTiles(m, v, i, len, d, axis, x, y, w, h, padding, type = "") {
   Local dx, dy, tileH, tileW, tileX, tileY
 
+  Perf_start("Tiler_stackTiles")
   ;; d = +1: Left-to-right and top-to-bottom, depending on axis
   ;; d = -1: Right-to-left and bottom-to-top, depending on axis
   If (d < 0)
@@ -380,6 +381,7 @@ Tiler_stackTiles(m, v, i, len, d, axis, x, y, w, h, padding, type = "") {
     tileX += dx
     tileY += dy
   }
+  Perf_end("Tiler_stackTiles")
 }
 
 Tiler_toggleStackArea(m ,v) {

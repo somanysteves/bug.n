@@ -18,6 +18,7 @@
 View_arrange(m, v, setLayout = False) {
   Local fn, h, l, w, x, y
 
+  Perf_start("View_arrange")
   Debug_logMessage("DEBUG[1] View_arrange(" . m . ", " . v . ")", 1)
 
   l := View_#%m%_#%v%_layout_#1
@@ -50,4 +51,5 @@ View_arrange(m, v, setLayout = False) {
     View_#%m%_#%v%_layoutSymbol := Config_layoutSymbol_#%l%
 
   Bar_updateLayout(m)
+  Perf_end("View_arrange")
 }
