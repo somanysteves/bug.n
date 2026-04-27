@@ -153,6 +153,17 @@ Window_hide(wndId) {
   }
 }
 
+;; Fire-and-forget hide via ShowWindowAsync. Unlike Window_hide (WinHide
+;; → SendMessage(WM_SHOWWINDOW), blocking on the window proc), this
+;; posts the message and returns immediately. Used by
+;; Monitor_activateView's hide loop where per-window blocking
+;; accumulates into the user-visible "blank desktop" gap. Safe on hung
+;; windows — ShowWindowAsync queues the message rather than waiting on
+;; the proc, so we skip the Window_isHung check.
+Window_hideAsync(wndId) {
+  Return DllCall("ShowWindowAsync", "Ptr", wndId, "Int", 0) ? 0 : 1    ;; SW_HIDE = 0
+}
+
 Window_isChild(wndId) {
   WS_CHILD = 0x40000000
   WinGet, wndStyle, Style, ahk_id %wndId%
@@ -326,6 +337,13 @@ Window_show(wndId) {
     WinShow, ahk_id %wndId%
     Return, 0
   }
+}
+
+;; Fire-and-forget show counterpart. SW_SHOWNA matches WinShow's
+;; ShowWindow(SW_SHOWNOACTIVATE) — no per-window focus grab as the
+;; loop iterates; Manager_winActivate sets focus once after.
+Window_showAsync(wndId) {
+  Return DllCall("ShowWindowAsync", "Ptr", wndId, "Int", 8) ? 0 : 1    ;; SW_SHOWNA = 8
 }
 
 Window_toggleDecor(wndId = 0) {

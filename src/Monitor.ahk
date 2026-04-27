@@ -41,6 +41,7 @@ Monitor_init(m, doRestore) {
 Monitor_activateView(i, d = 0) {
   Local aMonitor, aView, aWndId, detectHidden, m, n, wndId, wndIds
 
+  Perf_start("Monitor_activateView")
   aMonitor := Manager_aMonitor
   If (i = -1)
     i := Monitor_#%aMonitor%_aView_#2
@@ -49,11 +50,14 @@ Monitor_activateView(i, d = 0) {
   i := Manager_loop(i, d, 1, Config_viewCount)
 
   Debug_logMessage("DEBUG[1] Monitor_activateView; i: " . i . ", d: " . d . ", Manager_aMonitor: " . aMonitor . ", wndIds: " . View_#%Manager_aMonitor%_#%i%_wndIds, 1)
-  If (i <= 0) Or (i > Config_viewCount) Or Manager_hideShow
+  If (i <= 0) Or (i > Config_viewCount) Or Manager_hideShow {
+    Perf_end("Monitor_activateView")
     Return
+  }
   ;; Re-arrange the windows on the active view.
   If (i = Monitor_#%aMonitor%_aView_#1) {
     View_arrange(aMonitor, i)
+    Perf_end("Monitor_activateView")
     Return
   }
 
@@ -78,11 +82,13 @@ Monitor_activateView(i, d = 0) {
     Manager_hideShow := True
     SetWinDelay, 0
     StringTrimRight, wndIds, View_#%m%_#%aView%_wndIds, 1
+    Perf_start("Monitor_activateView_hide")
     Loop, PARSE, wndIds, `;
     {
       If A_LoopField And Not (Window_#%A_LoopField%_tags & (1 << i - 1))
-        Window_hide(A_LoopField)
+        Window_hideAsync(A_LoopField)
     }
+    Perf_end("Monitor_activateView_hide")
     SetWinDelay, 10
     detectHidden := A_DetectHiddenWindows
     DetectHiddenWindows, On
@@ -93,10 +99,12 @@ Monitor_activateView(i, d = 0) {
     DetectHiddenWindows, %detectHidden%
     StringTrimRight, wndIds, View_#%m%_#%i%_wndIds, 1
     SetWinDelay, 0
+    Perf_start("Monitor_activateView_show")
     Loop, PARSE, wndIds, `;
     {
-      Window_show(A_LoopField)
+      Window_showAsync(A_LoopField)
     }
+    Perf_end("Monitor_activateView_show")
     Window_set(wndId, "AlwaysOnTop", "Off")
     SetWinDelay, 10
     Manager_hideShow := False
@@ -107,6 +115,7 @@ Monitor_activateView(i, d = 0) {
 
   wndId := View_getActiveWindow(aMonitor, i)
   Manager_winActivate(wndId)
+  Perf_end("Monitor_activateView")
 }
 
 Monitor_find(d, n) {
