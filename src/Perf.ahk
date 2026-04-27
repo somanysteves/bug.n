@@ -9,7 +9,7 @@
       (the default) they're cheap no-ops, so production runs are unaffected.
   (2) Perf_runBench drives a fixed scenario (spawn N cmd windows, switch
       views, move windows, arrange) and writes a CSV row per (scenario,
-      phase) with min/median/p95/max latencies. Triggered by `bugn.exe --bench`.
+      phase) with min/median/p95/max latencies. Triggered by `bugn-bench.exe`.
 */
 
 Perf_init(enabled, csvPath, commit) {
