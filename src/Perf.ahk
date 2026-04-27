@@ -322,10 +322,12 @@ Perf_runBench(windowCount, iterations) {
 
   ;; Scenario 4: orphan_storm — kill half the spawned cmds out-of-band
   ;; via Process,Close (simulating a missed WINDOWDESTROYED event) and
-  ;; verify Manager_sync's orphan-cleanup pass prunes them. The first
-  ;; call should detect and prune the orphans (longer); subsequent calls
-  ;; find nothing to prune (shorter), so min/median/p95/max spread
-  ;; reflects the cleanup cost.
+  ;; verify Manager_validateAlive prunes them. The first call detects
+  ;; and prunes the orphans (longer); subsequent calls find nothing to
+  ;; prune (shorter), so min/median/p95/max spread reflects the cleanup
+  ;; cost. Calls Manager_validateAlive directly rather than waiting for
+  ;; the deferred Manager_validateAliveTimer fire — measuring the
+  ;; function's cost, not the timer plumbing.
   preOrphanCount := Perf_countManaged()
   killedPids := Perf_killHalfPids(spawnedPids)
   Sleep, 200    ;; let any in-flight shell events from the kills settle
@@ -334,9 +336,9 @@ Perf_runBench(windowCount, iterations) {
   Debug_logMessage("DEBUG[0] Perf_runBench: orphan_storm killed " . killedCount . " PIDs: " . killedPids . " (pre-cleanup managed = " . preOrphanCount . ")", 0)
   Perf_resetSamples()
   Loop, % iterations {
-    Manager_sync()
+    Manager_validateAlive()
   }
-  Perf_writeRow("orphan_storm", finalCount, "Manager_sync")
+  Perf_writeRow("orphan_storm", finalCount, "Manager_validateAlive")
   postOrphanCount := Perf_countManaged()
   expectedCount := preOrphanCount - killedCount
   If (postOrphanCount = expectedCount)

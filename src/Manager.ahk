@@ -50,10 +50,11 @@ Manager_init()
   }
   Bar_initCmdGui()
 
-  Manager_hideShow      := False
-  Bar_hideTitleWndIds   := ""
-  Manager_allWndIds     := ""
-  Manager_managedWndIds := ""
+  Manager_hideShow         := False
+  Manager_validateInProgress := False
+  Bar_hideTitleWndIds      := ""
+  Manager_allWndIds        := ""
+  Manager_managedWndIds    := ""
   Manager_initial_sync(doRestore)
 
   Bar_updateStatus()
@@ -193,6 +194,33 @@ Manager_doMaintenance:
   ;; @TODO: Manager_sync?
   If Not (Config_autoSaveSession = "off") And Not (Config_autoSaveSession = "False")
     Manager_saveState()
+Return
+
+;; Single-runner deferred orphan validator. Manager_onShellMessage
+;; schedules this with `SetTimer, ..., -200` after each shell event;
+;; AHK's SetTimer naturally debounces a burst of N events within 200 ms
+;; into a single fire 200 ms after the last one. The
+;; Manager_validateInProgress flag prevents a long-running validate from
+;; being re-entered if the timer fires again before it completes.
+;;
+;; If validate prunes any orphans and dynamic tiling is on, re-arranges
+;; the active view so the reclaimed slot collapses immediately.
+;;
+;; Deliberately NOT Critical (unlike Manager_doMaintenance which saves
+;; session state and must complete uninterrupted). Validate is a cleanup
+;; pass that's safe to interleave with other threads, and the user
+;; asked for a non-blocking design — Critical would block Bar_loop,
+;; hotkeys, and shell events for the duration of validate (~10-50 ms
+;; typical). The Manager_validateInProgress flag, not Critical, is the
+;; mechanism that ensures only one validate runs at a time.
+Manager_validateAliveTimer:
+  Critical Off    ;; explicit: keep other timers/hotkeys/shell events responsive
+  If Manager_validateInProgress
+    Return
+  Manager_validateInProgress := True
+  If (Manager_validateAlive() And Config_dynamicTiling)
+    View_arrange(Manager_aMonitor, Monitor_#%Manager_aMonitor%_aView_#1)
+  Manager_validateInProgress := False
 Return
 
 Manager_getWindowInfo() {
@@ -746,6 +774,15 @@ Manager_onShellMessage(wParam, lParam) {
     }
     Bar_updateTitle()
     Perf_end("Manager_onShellMessage")
+
+    ;; Defer orphan validation off the shell-event hot path. Using a
+    ;; negative SetTimer interval makes this a one-shot; rapid bursts of
+    ;; shell events naturally debounce because each call re-arms the same
+    ;; label rather than queueing additional fires. Validate runs ~200 ms
+    ;; after the last event and cleans up HWNDs whose WINDOWDESTROYED
+    ;; was missed (event dropped during Manager_hideShow, force-killed
+    ;; process, etc.). The timer label has a single-runner guard.
+    SetTimer, Manager_validateAliveTimer, -200
   }
 }
 
@@ -1225,7 +1262,7 @@ Manager_initial_sync(doRestore) {
 ;;   those, which have at least a title or class.
 Manager_sync(ByRef wndIds = "")
 {
-  Local a, flag, prevDetect, shownWndIds, v, visibleWndIds, wndId
+  Local a, flag, shownWndIds, v, wndId
   Perf_start("Manager_sync")
   a := 0
 
@@ -1235,8 +1272,12 @@ Manager_sync(ByRef wndIds = "")
     v := Monitor_#%A_Index%_aView_#1
     shownWndIds .= View_#%A_Index%_#%v%_wndIds
   }
-  ;; Check all visible windows against the known windows
-  visibleWndIds := ""
+  ;; Classify newly-appeared visible windows; note already-managed
+  ;; windows that gained focus (returned via wndIds for the activation
+  ;; handling in Manager_onShellMessage). Orphan cleanup is no longer
+  ;; performed here -- it's the responsibility of Manager_validateAlive,
+  ;; scheduled deferred via Manager_validateAliveTimer 200 ms after
+  ;; shell events.
   WinGet, wndId, List, , ,
   Loop, % wndId
   {
@@ -1255,33 +1296,49 @@ Manager_sync(ByRef wndIds = "")
         wndIds .= wndId%A_Index% ";"
       }
     }
-    visibleWndIds := visibleWndIds wndId%A_Index% ";"
   }
-
-  ;; Orphan cleanup: unmanage active-view windows whose HWND no longer
-  ;; exists. Uses WinExist with DetectHiddenWindows On rather than the
-  ;; previous InStr against `visibleWndIds` (which was built from
-  ;; WinGet,List without DetectHiddenWindows). The old check raced with
-  ;; bug.n's own WinHide/WinShow during view-switch transitions: a window
-  ;; mid-hide looked "not in visibleWndIds" and got falsely unmanaged.
-  ;; WinExist (with DetectHiddenWindows On) only returns False for a
-  ;; truly-destroyed HWND, so transient hidden states no longer leak.
-  StringTrimRight, shownWndIds, shownWndIds, 1
-  prevDetect := A_DetectHiddenWindows
-  DetectHiddenWindows, On
-  Loop, PARSE, shownWndIds, `;
-  {
-    If A_LoopField And Not WinExist("ahk_id " . A_LoopField)
-    {
-      flag := Manager_unmanage(A_LoopField)
-      If (flag And a = 0)
-        a := -1
-    }
-  }
-  DetectHiddenWindows, %prevDetect%
 
   Perf_end("Manager_sync")
   Return, a
+}
+
+;; Manager_validateAlive: walk every managed HWND across all views and
+;; unmanage any whose window no longer exists. Catches orphans where
+;; the WINDOWDESTROYED event was missed (e.g. while Manager_hideShow=True
+;; mid-arrange, or for force-killed processes that don't fire clean
+;; shell events).
+;;
+;; Scheduled via Manager_validateAliveTimer (deferred -200 ms after
+;; shell events) so this work happens off the shell-event hot path
+;; rather than synchronously inside Manager_sync. Returns 1 if anything
+;; was pruned, 0 otherwise; caller is responsible for re-arranging the
+;; active view if needed.
+Manager_validateAlive() {
+  Local a, deadWndIds, flag, mgrTrimmed, prevDetect
+
+  Perf_start("Manager_validateAlive")
+  a := 0
+  prevDetect := A_DetectHiddenWindows
+  DetectHiddenWindows, On
+  deadWndIds := ""
+  StringTrimRight, mgrTrimmed, Manager_managedWndIds, 1
+  Loop, PARSE, mgrTrimmed, `;
+  {
+    If A_LoopField And Not WinExist("ahk_id " . A_LoopField)
+      deadWndIds .= A_LoopField . ";"
+  }
+  DetectHiddenWindows, %prevDetect%
+  StringTrimRight, deadWndIds, deadWndIds, 1
+  Loop, PARSE, deadWndIds, `;
+  {
+    If A_LoopField {
+      flag := Manager_unmanage(A_LoopField)
+      If flag
+        a := 1
+    }
+  }
+  Perf_end("Manager_validateAlive")
+  Return a
 }
 
 Manager_unmanage(wndId) {
