@@ -339,11 +339,11 @@ Window_show(wndId) {
   }
 }
 
-;; Fire-and-forget show counterpart to Window_hideAsync. SW_SHOW (not
-;; SW_SHOWNORMAL) so already-minimized windows stay minimized — same
-;; semantic as the underlying WinShow path for already-visible state.
+;; Fire-and-forget show counterpart. SW_SHOWNA matches WinShow's
+;; ShowWindow(SW_SHOWNOACTIVATE) — no per-window focus grab as the
+;; loop iterates; Manager_winActivate sets focus once after.
 Window_showAsync(wndId) {
-  Return DllCall("ShowWindowAsync", "Ptr", wndId, "Int", 5) ? 0 : 1    ;; SW_SHOW = 5
+  Return DllCall("ShowWindowAsync", "Ptr", wndId, "Int", 8) ? 0 : 1    ;; SW_SHOWNA = 8
 }
 
 Window_toggleDecor(wndId = 0) {
