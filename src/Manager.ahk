@@ -642,7 +642,13 @@ Manager_onShellMessage(wParam, lParam) {
   If (wParam = 1 Or wParam = 2 Or wParam = 4 Or wParam = 6 Or wParam = 32772) And lParam And Not Manager_hideShow
   {
     Perf_start("Manager_onShellMessage")
-    Sleep, % Config_shellMsgDelay
+    ;; Process shell events immediately. The previous Sleep,
+    ;; %Config_shellMsgDelay% here was a workaround for transient popups
+    ;; (issue #83 — Total Commander's TDLG2FILEACTIONMIN flashes during
+    ;; file rename, etc.) — bug.n would tile the popup before it died,
+    ;; leaving a gap. Two-phase commit handles this correctly: tile on
+    ;; create, untile on destroy. Brief flicker for genuine phantoms is
+    ;; preferable to a 350 ms latency penalty on every real window event.
     wndIds := ""
     a := isChanged := Manager_sync(wndIds)
     If wndIds
