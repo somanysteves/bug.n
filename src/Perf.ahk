@@ -133,17 +133,21 @@ Perf_diffWndIds(baseline, current) {
   Return newIds
 }
 
-;; Wait until the count of managed windows has grown by at least delta,
-;; or until timeoutMs elapses. Returns True on success, False on timeout.
-Perf_waitForManagedDelta(baselineCount, delta, timeoutMs) {
+;; Wait until at least `delta` HWNDs not in `baselineWndIds` have shown up
+;; in Manager_managedWndIds, or until timeoutMs elapses. Counts the diff
+;; rather than `current - baselineCount` because Manager_sync's
+;; validate-on-sync pass can legitimately prune stale baseline entries
+;; during spawn, making a count-delta go negative even when all spawned
+;; windows registered correctly.
+Perf_waitForManagedDelta(baselineWndIds, delta, timeoutMs) {
   Global Manager_managedWndIds
 
   deadline := A_TickCount + timeoutMs
   Loop {
     Sleep, 50
-    StringReplace, dummy, Manager_managedWndIds, `;, `;, UseErrorLevel All
-    current := ErrorLevel
-    If (current - baselineCount >= delta)
+    diff := Perf_diffWndIds(baselineWndIds, Manager_managedWndIds)
+    StringReplace, dummy, diff, `;, `;, UseErrorLevel All
+    If (ErrorLevel >= delta)
       Return True
     If (A_TickCount > deadline)
       Return False
@@ -188,6 +192,27 @@ Perf_closePids(pidList) {
     If A_LoopField
       Process, Close, %A_LoopField%
   }
+}
+
+;; Kill the first half of a `;`-separated PID list via Process,Close.
+;; Used by the orphan_storm scenario to simulate "WINDOWDESTROYED was
+;; never received" -- Process,Close terminates the process out-of-band,
+;; and on a busy system bug.n's shell hook may miss the destroy event
+;; (especially while Manager_hideShow=True). Returns the killed PIDs as
+;; their own `;`-separated string so callers can verify cleanup.
+Perf_killHalfPids(pidList) {
+  StringTrimRight, trimmed, pidList, 1
+  StringSplit, pids, trimmed, `;
+  killed := ""
+  half := pids0 // 2
+  Loop, % half {
+    pid := pids%A_Index%
+    If pid {
+      Process, Close, %pid%
+      killed .= pid . ";"
+    }
+  }
+  Return killed
 }
 
 ;; Bench harness. Called once after Manager_init has finished and the
@@ -242,12 +267,14 @@ Perf_runBench(windowCount, iterations) {
 
   spawnedPids := ""
   Perf_spawnWindows(windowCount, spawnedPids)
-  If Not Perf_waitForManagedDelta(baselineCount, windowCount, 10000) {
+  If Not Perf_waitForManagedDelta(baselineWndIds, windowCount, 10000) {
     Global Manager_allWndIds
     StringReplace, dummy, Manager_allWndIds, `;, `;, UseErrorLevel All
     allCount := ErrorLevel
-    Debug_logMessage("DEBUG[0] Perf_runBench: timed out waiting for " . windowCount . " windows to register (managed delta = " . (Perf_countManaged() - baselineCount) . ", all-seen count = " . allCount . ")", 0)
     spawnedWndIds := Perf_diffWndIds(baselineWndIds, Manager_managedWndIds)
+    StringReplace, dummy, spawnedWndIds, `;, `;, UseErrorLevel All
+    spawnedDiffCount := ErrorLevel
+    Debug_logMessage("DEBUG[0] Perf_runBench: timed out waiting for " . windowCount . " windows to register (spawned-diff = " . spawnedDiffCount . ", all-seen count = " . allCount . ")", 0)
     Perf_cleanup(spawnedWndIds, spawnedPids, originalView)
     ExitApp, 2
   }
@@ -291,6 +318,31 @@ Perf_runBench(windowCount, iterations) {
     View_shuffleWindow(0, +1)
   }
   Perf_writeRow("window_shuffle", finalCount, "View_arrange,Tiler_stackTiles")
+  Sleep, 300
+
+  ;; Scenario 4: orphan_storm — kill half the spawned cmds out-of-band
+  ;; via Process,Close (simulating a missed WINDOWDESTROYED event) and
+  ;; verify Manager_sync's orphan-cleanup pass prunes them. The first
+  ;; call should detect and prune the orphans (longer); subsequent calls
+  ;; find nothing to prune (shorter), so min/median/p95/max spread
+  ;; reflects the cleanup cost.
+  preOrphanCount := Perf_countManaged()
+  killedPids := Perf_killHalfPids(spawnedPids)
+  Sleep, 200    ;; let any in-flight shell events from the kills settle
+  StringReplace, dummy, killedPids, `;, `;, UseErrorLevel All
+  killedCount := ErrorLevel
+  Debug_logMessage("DEBUG[0] Perf_runBench: orphan_storm killed " . killedCount . " PIDs: " . killedPids . " (pre-cleanup managed = " . preOrphanCount . ")", 0)
+  Perf_resetSamples()
+  Loop, % iterations {
+    Manager_sync()
+  }
+  Perf_writeRow("orphan_storm", finalCount, "Manager_sync")
+  postOrphanCount := Perf_countManaged()
+  expectedCount := preOrphanCount - killedCount
+  If (postOrphanCount = expectedCount)
+    Debug_logMessage("DEBUG[0] Perf_runBench: orphan_storm cleanup OK — managed dropped " . preOrphanCount . " -> " . postOrphanCount, 0)
+  Else
+    Debug_logMessage("DEBUG[0] Perf_runBench: orphan_storm REGRESSION — managed went " . preOrphanCount . " -> " . postOrphanCount . ", expected " . expectedCount . " (killed " . killedCount . "). Orphan cleanup may have regressed.", 0)
   Sleep, 300
 
   Debug_logMessage("DEBUG[0] Perf_runBench: complete, wrote " Perf_csvPath, 0)
