@@ -86,7 +86,7 @@ Monitor_activateView(i, d = 0) {
     Loop, PARSE, wndIds, `;
     {
       If A_LoopField And Not (Window_#%A_LoopField%_tags & (1 << i - 1))
-        Window_hide(A_LoopField)
+        Window_hideAsync(A_LoopField)
     }
     Perf_end("Monitor_activateView_hide")
     SetWinDelay, 10
@@ -102,7 +102,7 @@ Monitor_activateView(i, d = 0) {
     Perf_start("Monitor_activateView_show")
     Loop, PARSE, wndIds, `;
     {
-      Window_show(A_LoopField)
+      Window_showAsync(A_LoopField)
     }
     Perf_end("Monitor_activateView_show")
     Window_set(wndId, "AlwaysOnTop", "Off")
