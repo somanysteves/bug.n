@@ -127,7 +127,7 @@ Perf_diffWndIds(baseline, current) {
   newIds := ""
   Loop, PARSE, currentTrimmed, `;
   {
-    If A_LoopField And Not InStr(baseline, A_LoopField . ";")
+    If A_LoopField And Not InStr(";" . baseline, ";" . A_LoopField . ";")
       newIds .= A_LoopField . ";"
   }
   Return newIds
