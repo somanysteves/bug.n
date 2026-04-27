@@ -1225,7 +1225,7 @@ Manager_initial_sync(doRestore) {
 ;;   those, which have at least a title or class.
 Manager_sync(ByRef wndIds = "")
 {
-  Local a, flag, shownWndIds, v, visibleWndIds, wndId
+  Local a, flag, prevDetect, shownWndIds, v, visibleWndIds, wndId
   Perf_start("Manager_sync")
   a := 0
 
@@ -1258,18 +1258,27 @@ Manager_sync(ByRef wndIds = "")
     visibleWndIds := visibleWndIds wndId%A_Index% ";"
   }
 
-  ;; @todo-future: Find out why this unmanage code exists and if it's still needed.
-  ;; check, if a window, that is known to be visible, is actually not visible
+  ;; Orphan cleanup: unmanage active-view windows whose HWND no longer
+  ;; exists. Uses WinExist with DetectHiddenWindows On rather than the
+  ;; previous InStr against `visibleWndIds` (which was built from
+  ;; WinGet,List without DetectHiddenWindows). The old check raced with
+  ;; bug.n's own WinHide/WinShow during view-switch transitions: a window
+  ;; mid-hide looked "not in visibleWndIds" and got falsely unmanaged.
+  ;; WinExist (with DetectHiddenWindows On) only returns False for a
+  ;; truly-destroyed HWND, so transient hidden states no longer leak.
   StringTrimRight, shownWndIds, shownWndIds, 1
+  prevDetect := A_DetectHiddenWindows
+  DetectHiddenWindows, On
   Loop, PARSE, shownWndIds, `;
   {
-    If Not InStr(visibleWndIds, A_LoopField)
+    If A_LoopField And Not WinExist("ahk_id " . A_LoopField)
     {
       flag := Manager_unmanage(A_LoopField)
       If (flag And a = 0)
         a := -1
     }
   }
+  DetectHiddenWindows, %prevDetect%
 
   Perf_end("Manager_sync")
   Return, a
