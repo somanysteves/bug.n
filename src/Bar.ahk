@@ -494,6 +494,7 @@ Bar_updateTitle() {
 Bar_updateView(m, v) {
   Local managedWndId0, wndId0, wndIds, newBar
 
+  Perf_start("Bar_updateView")
   newBar := View_#%m%_#%v%_showBar
   If Not (newBar = Monitor_#%m%_showBar) {
     Monitor_#%m%_showBar := View_#%m%_#%v%_showBar
@@ -523,4 +524,5 @@ Bar_updateView(m, v) {
     GuiControl, , Bar_#%m%_view_#%A_Index%_highlighted, % wndId0 / managedWndId0 * 100    ;; Update the percentage fill for the view.
     GuiControl, , Bar_#%m%_view_#%A_Index%, % Config_viewNames_#%A_Index%                 ;; Refresh the number on the bar.
   }
+  Perf_end("Bar_updateView")
 }

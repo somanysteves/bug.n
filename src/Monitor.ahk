@@ -82,11 +82,13 @@ Monitor_activateView(i, d = 0) {
     Manager_hideShow := True
     SetWinDelay, 0
     StringTrimRight, wndIds, View_#%m%_#%aView%_wndIds, 1
+    Perf_start("Monitor_activateView_hide")
     Loop, PARSE, wndIds, `;
     {
       If A_LoopField And Not (Window_#%A_LoopField%_tags & (1 << i - 1))
         Window_hide(A_LoopField)
     }
+    Perf_end("Monitor_activateView_hide")
     SetWinDelay, 10
     detectHidden := A_DetectHiddenWindows
     DetectHiddenWindows, On
@@ -97,10 +99,12 @@ Monitor_activateView(i, d = 0) {
     DetectHiddenWindows, %detectHidden%
     StringTrimRight, wndIds, View_#%m%_#%i%_wndIds, 1
     SetWinDelay, 0
+    Perf_start("Monitor_activateView_show")
     Loop, PARSE, wndIds, `;
     {
       Window_show(A_LoopField)
     }
+    Perf_end("Monitor_activateView_show")
     Window_set(wndId, "AlwaysOnTop", "Off")
     SetWinDelay, 10
     Manager_hideShow := False

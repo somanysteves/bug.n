@@ -320,7 +320,35 @@ Perf_runBench(windowCount, iterations) {
   Perf_writeRow("window_shuffle", finalCount, "View_arrange,Tiler_stackTiles")
   Sleep, 300
 
-  ;; Scenario 4: orphan_storm — kill half the spawned cmds out-of-band
+  ;; Scenario 4: populated view_switch — spawn another batch of windows on
+  ;; switchTarget so flipping between the two views exercises the real
+  ;; hide/show + arrange paths with N windows on each side. The empty-views
+  ;; view_switch above measures fixed overhead; this one measures the
+  ;; per-window cost the user feels switching virtual desktops.
+  preSecondManaged := Manager_managedWndIds
+  secondPids := ""
+  Monitor_activateView(switchTarget)
+  Sleep, 300
+  Perf_spawnWindows(windowCount, secondPids)
+  If Not Perf_waitForManagedDelta(preSecondManaged, windowCount, 10000) {
+    Debug_logMessage("DEBUG[0] Perf_runBench: timed out waiting for second-batch spawn to register on view " . switchTarget, 0)
+    secondWndIds := Perf_diffWndIds(preSecondManaged, Manager_managedWndIds)
+    Perf_cleanup(spawnedWndIds . secondWndIds, spawnedPids . secondPids, originalView)
+    ExitApp, 2
+  }
+  secondWndIds := Perf_diffWndIds(preSecondManaged, Manager_managedWndIds)
+  populatedCount := Perf_countManaged()
+  Sleep, 800
+
+  Perf_resetSamples()
+  Loop, % iterations {
+    Monitor_activateView(benchView)
+    Monitor_activateView(switchTarget)
+  }
+  Perf_writeRow("view_switch_populated", populatedCount, "Monitor_activateView,Monitor_activateView_hide,Monitor_activateView_show,View_arrange,Tiler_stackTiles,Bar_updateView,Manager_winActivate")
+  Sleep, 300
+
+  ;; Scenario 5: orphan_storm — kill half the spawned cmds out-of-band
   ;; via Process,Close (simulating a missed WINDOWDESTROYED event) and
   ;; verify Manager_validateAlive prunes them. The first call detects
   ;; and prunes the orphans (longer); subsequent calls find nothing to
@@ -338,7 +366,7 @@ Perf_runBench(windowCount, iterations) {
   Loop, % iterations {
     Manager_validateAlive()
   }
-  Perf_writeRow("orphan_storm", finalCount, "Manager_validateAlive")
+  Perf_writeRow("orphan_storm", populatedCount, "Manager_validateAlive")
   postOrphanCount := Perf_countManaged()
   expectedCount := preOrphanCount - killedCount
   If (postOrphanCount = expectedCount)
@@ -348,7 +376,7 @@ Perf_runBench(windowCount, iterations) {
   Sleep, 300
 
   Debug_logMessage("DEBUG[0] Perf_runBench: complete, wrote " Perf_csvPath, 0)
-  Perf_cleanup(spawnedWndIds, spawnedPids, originalView)
+  Perf_cleanup(spawnedWndIds . secondWndIds, spawnedPids . secondPids, originalView)
   ExitApp
 }
 

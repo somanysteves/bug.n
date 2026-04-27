@@ -1368,7 +1368,8 @@ Manager_unmanage(wndId) {
 
 Manager_winActivate(wndId) {
   Global Manager_aMonitor
-  
+
+  Perf_start("Manager_winActivate")
   Manager_setCursor(wndId)
   Debug_logMessage("DEBUG[1] Activating window: " wndId, 1)
   If Not wndId {
@@ -1376,10 +1377,12 @@ Manager_winActivate(wndId) {
     Debug_logMessage("DEBUG[1] Activating Desktop: " wndId, 1)
   }
 
-  If Window_activate(wndId)
+  If Window_activate(wndId) {
+    Perf_end("Manager_winActivate")
     Return, 1
-  Else {
+  } Else {
     Bar_updateTitle()
+    Perf_end("Manager_winActivate")
     Return 0
   }
 }
