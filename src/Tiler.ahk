@@ -351,7 +351,7 @@ Tiler_stackTiles(m, v, i, len, d, axis, x, y, w, h, padding, type = "") {
   Local dx, dy, tileH, tileW, tileX, tileY
   Local batchHwnds, batchX, batchY, batchW, batchH, batchN
   Local wndId, wndMinMax, wndX, wndY, wndW, wndH
-  Local hdwp, targetX, targetY, targetW, targetH, adjX, adjY, adjW, adjH
+  Local hdwp, batchApplied, targetX, targetY, targetW, targetH, adjX, adjY, adjW, adjH
   Local SWP_FLAGS
 
   Perf_start("Tiler_stackTiles")
@@ -422,6 +422,7 @@ Tiler_stackTiles(m, v, i, len, d, axis, x, y, w, h, padding, type = "") {
   batchN := batchHwnds.MaxIndex()
   If (batchN > 0) {
     SWP_FLAGS := 0x0004 | 0x0010 | 0x0200    ;; NOZORDER | NOACTIVATE | NOOWNERZORDER
+    batchApplied := False
     hdwp := DllCall("BeginDeferWindowPos", "Int", batchN, "Ptr")
     If hdwp {
       Loop, % batchN {
@@ -429,26 +430,34 @@ Tiler_stackTiles(m, v, i, len, d, axis, x, y, w, h, padding, type = "") {
         If Not hdwp
           Break
       }
-      If hdwp
-        DllCall("EndDeferWindowPos", "Ptr", hdwp)
+      If hdwp And DllCall("EndDeferWindowPos", "Ptr", hdwp)
+        batchApplied := True
     }
 
-    ;; Pass 3: DPI / DWM-frame correction — mirror Window_move's per-window
-    ;; adjust for windows that landed offset by their invisible chrome.
-    Loop, % batchN {
-      wndId := batchHwnds[A_Index]
-      If Window_getPosEx(wndId, wndX, wndY, wndW, wndH) {
-        targetX := batchX[A_Index]
-        targetY := batchY[A_Index]
-        targetW := batchW[A_Index]
-        targetH := batchH[A_Index]
-        If (Abs(wndX - targetX) > 1 Or Abs(wndY - targetY) > 1 Or Abs(wndW - targetW) > 1 Or Abs(wndH - targetH) > 1) {
-          adjX := targetX - (wndX - targetX)
-          adjY := targetY - (wndY - targetY)
-          adjW := targetW + (targetW - wndW - 1)
-          adjH := targetH + (targetH - wndH - 1)
-          WinMove, ahk_id %wndId%, , %adjX%, %adjY%, %adjW%, %adjH%
+    If batchApplied {
+      ;; Pass 3: DPI / DWM-frame correction — mirror Window_move's per-window
+      ;; adjust for windows that landed offset by their invisible chrome.
+      Loop, % batchN {
+        wndId := batchHwnds[A_Index]
+        If Window_getPosEx(wndId, wndX, wndY, wndW, wndH) {
+          targetX := batchX[A_Index]
+          targetY := batchY[A_Index]
+          targetW := batchW[A_Index]
+          targetH := batchH[A_Index]
+          If (Abs(wndX - targetX) > 1 Or Abs(wndY - targetY) > 1 Or Abs(wndW - targetW) > 1 Or Abs(wndH - targetH) > 1) {
+            adjX := targetX - (wndX - targetX)
+            adjY := targetY - (wndY - targetY)
+            adjW := targetW + (targetW - wndW - 1)
+            adjH := targetH + (targetH - wndH - 1)
+            WinMove, ahk_id %wndId%, , %adjX%, %adjY%, %adjW%, %adjH%
+          }
         }
+      }
+    } Else {
+      ;; Batch failed — fall back to per-window Window_move so we don't let
+      ;; Pass 3's correction math fling windows that are still at OLD positions.
+      Loop, % batchN {
+        Window_move(batchHwnds[A_Index], batchX[A_Index], batchY[A_Index], batchW[A_Index], batchH[A_Index])
       }
     }
   }
