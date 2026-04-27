@@ -232,6 +232,14 @@ Perf_runBench(windowCount, iterations) {
   baselineCount  := Perf_countManaged()
   Debug_logMessage("DEBUG[0] Perf_runBench: baseline managed count = " baselineCount . " (playground view " . benchView . ")", 0)
 
+  ;; Scenario 0: window_spawn -- capture Manager_onShellMessage / Manager_sync /
+  ;; View_arrange samples that fire while the OS notifies bug.n about each
+  ;; spawned cmd. This is the only scenario that exercises the shell-hook
+  ;; entry point (the others call Monitor_activateView / View_arrange /
+  ;; View_shuffleWindow directly), so it's the only one whose numbers move
+  ;; when Config_shellMsgDelay changes.
+  Perf_resetSamples()
+
   spawnedPids := ""
   Perf_spawnWindows(windowCount, spawnedPids)
   If Not Perf_waitForManagedDelta(baselineCount, windowCount, 10000) {
@@ -249,6 +257,7 @@ Perf_runBench(windowCount, iterations) {
   Sleep, 800    ;; let any pending shell-hook work + initial arrange settle
 
   Perf_writeHeader()
+  Perf_writeRow("window_spawn", finalCount, "Manager_onShellMessage,Manager_sync,View_arrange")
 
   ;; Scenario 1: view switch (benchView <-> switchTarget). Both empty of
   ;; user windows, so this exercises Monitor_activateView + View_arrange
