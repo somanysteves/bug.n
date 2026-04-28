@@ -10,7 +10,7 @@
   @license GNU General Public License version 3
            ../LICENSE.md or <http://www.gnu.org/licenses/>
 
-  @version 9.1.0
+  @version 9.2.0
 */
 
 Debug_initLog(filename, level = 0, truncateFile = True)

@@ -3,7 +3,7 @@
   Copyright (c) 2010-2019 Joshua Fuhs, joten
 
   @license GNU General Public License version 3
-  @version 9.1.0
+  @version 9.2.0
 
   Bench_main.ahk -- separate compilation entry point for performance
   benchmarking. Builds to bugn-bench.exe so it can coexist with the
@@ -19,7 +19,7 @@
 */
 
 NAME    := "bug.n-bench"
-VERSION := "9.1.0"
+VERSION := "9.2.0"
 
 ;; Script settings -- mirror Main.ahk except for #SingleInstance, where
 ;; the bench gets its own (different exe) and is not affected by the
