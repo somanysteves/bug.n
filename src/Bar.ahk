@@ -16,6 +16,8 @@
 Bar_init(m) {
   Local appBarMsg, anyText, color, color0, GuiN, h1, h2, i, id, id0, text, text0, titleWidth, trayWndId, w, wndId, wndTitle, wndWidth, x1, x2, y1, y2
 
+  Bar_initialized := True
+
   If (SubStr(Config_barWidth, 0) = "%") {
     StringTrimRight, wndWidth, Config_barWidth, 1
     wndWidth := Round(Monitor_#%m%_width * wndWidth / 100)
@@ -459,6 +461,9 @@ Bar_updateStatus() {
 Bar_updateTitle() {
   Local aWndId, aWndTitle, content, GuiN, i, title
 
+  If Not Bar_initialized
+    Return
+
   WinGet, aWndId, ID, A
   WinGetTitle, aWndTitle, ahk_id %aWndId%
   If InStr(Bar_hideTitleWndIds, aWndId ";") Or (aWndTitle = "bug.n_BAR_0")
@@ -494,6 +499,9 @@ Bar_updateTitle() {
 Bar_updateView(m, v) {
   Local managedWndId0, wndId0, wndIds, newBar
 
+  If Not Bar_initialized
+    Return
+
   Perf_start("Bar_updateView")
   newBar := View_#%m%_#%v%_showBar
   If Not (newBar = Monitor_#%m%_showBar) {
@@ -512,6 +520,10 @@ Bar_updateView(m, v) {
     ;; Set foreground/background colors if the view is the current view.
     GuiControl, +Background%Config_backColor_#2_#1% +c%Config_foreColor_#2_#1%, Bar_#%m%_view_#%v%_highlighted
     GuiControl, +c%Config_fontColor_#2_#1%, Bar_#%m%_view_#%v%
+  } Else If View_#%m%_#%v%_isUrgent {
+    ;; Urgent view: a managed window on this view is flashing/awaiting attention.
+    GuiControl, +Background%Config_backColor_#3_#1% +c%Config_foreColor_#3_#1%, Bar_#%m%_view_#%v%_highlighted
+    GuiControl, +c%Config_fontColor_#3_#1%, Bar_#%m%_view_#%v%
   } Else {
     ;; Set foreground/background colors.
     GuiControl, +Background%Config_backColor_#1_#1% +c%Config_foreColor_#1_#1%, Bar_#%m%_view_#%v%_highlighted

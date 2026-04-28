@@ -84,4 +84,5 @@ Return
 #Include %A_ScriptDir%\View_arrange.ahk
 #Include %A_ScriptDir%\View_getTiledWndIds.ahk
 #Include %A_ScriptDir%\Window.ahk
+#Include %A_ScriptDir%\Window_getHidden.ahk
 #Include %A_ScriptDir%\MonitorManager.ahk

@@ -33,6 +33,24 @@ Manager_setCursor(wndId) {
   Test_managerSetCursorLastWndId := wndId
 }
 
+;; Test-only replacement for Window_getHidden — see src/Window_getHidden.ahk.
+;; Default behavior matches production for fake HWNDs (returns False).
+;; Tests can set Test_Window_getHidden_returns := True to force the early-
+;; return path in Manager_onShellMessage.
+Test_Window_getHidden_returns := ""
+
+Window_getHidden(wndId, ByRef wndClass, ByRef wndTitle) {
+  Global Test_Window_getHidden_returns
+  If (Test_Window_getHidden_returns != "") {
+    wndClass := "TestStubbedClass"
+    wndTitle := "TestStubbedTitle"
+    Return Test_Window_getHidden_returns
+  }
+  wndClass := ""
+  wndTitle := ""
+  Return False
+}
+
 ;; Test-only replacement for View_getTiledWndIds. The production
 ;; version (src/View_getTiledWndIds.ahk) filters the view's wndIds
 ;; list with WinExist + Window_isHung, which rejects fake test window

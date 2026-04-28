@@ -226,7 +226,7 @@ Config_getSystemSettings() {
     If Not Config_backColor_#2
       Config_backColor_#2 := COLOR_GRADIENTACTIVECAPTION ";;;;;;;" COLOR_MENU ";" COLOR_MENU
     If Not Config_backColor_#3
-      Config_backColor_#3 := ";;;;;;;ff8040;"
+      Config_backColor_#3 := "cc0000;;;;;;;ff8040;"
 
     If Not Config_foreColor_#1 {
       Config_foreColor_#1 := COLOR_INACTIVECAPTION ";" COLOR_ACTIVECAPTION ";" COLOR_MENU ";" COLOR_ACTIVECAPTION ";" COLOR_MENU ";" COLOR_ACTIVECAPTION ";"
@@ -235,7 +235,7 @@ Config_getSystemSettings() {
     If Not Config_foreColor_#2
       Config_foreColor_#2 := COLOR_ACTIVECAPTION ";;;;;;;" COLOR_HIGHLIGHT ";" COLOR_HIGHLIGHT
     If Not Config_foreColor_#3
-      Config_foreColor_#3 := ";;;;;;;" COLOR_INACTIVECAPTION ";"
+      Config_foreColor_#3 := "cc0000;;;;;;;" COLOR_INACTIVECAPTION ";"
 
     If Not Config_fontColor_#1 {
       Config_fontColor_#1 := COLOR_INACTIVECAPTIONTEXT ";" COLOR_CAPTIONTEXT ";" COLOR_MENUTEXT ";" COLOR_CAPTIONTEXT ";" COLOR_MENUTEXT ";" COLOR_CAPTIONTEXT ";"
@@ -244,7 +244,7 @@ Config_getSystemSettings() {
     If Not Config_fontColor_#2
       Config_fontColor_#2 := COLOR_CAPTIONTEXT ";;;;;;;" COLOR_MENUTEXT ";" COLOR_MENUTEXT
     If Not Config_fontColor_#3
-      Config_fontColor_#3 := ";;;;;;;" COLOR_INACTIVECAPTIONTEXT ";"
+      Config_fontColor_#3 := "ffffff;;;;;;;" COLOR_INACTIVECAPTIONTEXT ";"
   }
   SetFormat, Integer, d
 
@@ -512,6 +512,7 @@ Config_UI_saveSession() {
 #^9::Monitor_toggleWindowTag(9)
 ~WheelUp::Manager_activateViewByMouse(-1)
 ~WheelDown::Manager_activateViewByMouse(+1)
+#u::Manager_activateUrgentView()
 
 ;; Monitor management
 #.::Manager_activateMonitor(0, +1)

@@ -62,6 +62,19 @@ Monitor_activateView(i, d = 0) {
   }
 
   aView := Monitor_#%aMonitor%_aView_#1
+
+  ;; Clear urgency on the destination view: switching to it counts as the user
+  ;; having seen whatever was flashing, so the bar should stop lighting up red.
+  If View_#%aMonitor%_#%i%_isUrgent {
+    View_#%aMonitor%_#%i%_isUrgent := False
+    StringTrimRight, wndIds, View_#%aMonitor%_#%i%_wndIds, 1
+    Loop, PARSE, wndIds, `;
+    {
+      If A_LoopField
+        Window_#%A_LoopField%_isUrgent := False
+    }
+  }
+
   WinGet, aWndId, ID, A
   If WinExist("ahk_id" aWndId) And InStr(View_#%aMonitor%_#%aView%_wndIds, aWndId ";") And Window_isProg(aWndId)
     View_setActiveWindow(aMonitor, aView, aWndId)
@@ -105,7 +118,8 @@ Monitor_activateView(i, d = 0) {
       Window_showAsync(A_LoopField)
     }
     Perf_end("Monitor_activateView_show")
-    Window_set(wndId, "AlwaysOnTop", "Off")
+    If wndId
+      Window_set(wndId, "AlwaysOnTop", "Off")
     SetWinDelay, 10
     Manager_hideShow := False
 

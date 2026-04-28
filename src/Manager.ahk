@@ -351,6 +351,7 @@ Manager__setWinProperties(wndId, isManaged, m, tags, isDecorated, isFloating, hi
     Window_#%wndId%_isDecorated := isDecorated
     Window_#%wndId%_isFloating  := isFloating
     Window_#%wndId%_isMinimized := False
+    Window_#%wndId%_isUrgent    := False
     Window_#%wndId%_area        := 0
 
     If Not Config_showBorder
@@ -592,7 +593,7 @@ Return
     title change: 6 or 32774
 */
 Manager_onShellMessage(wParam, lParam) {
-  Local a, isChanged, aWndClass, aWndHeight, aWndId, aWndTitle, aWndWidth, aWndX, aWndY, i, m, t, wndClass, wndId, wndId0, wndIds, wndIsDesktop, wndIsHidden, wndTitle, x, y
+  Local a, isChanged, aWndClass, aWndHeight, aWndId, aWndTitle, aWndWidth, aWndX, aWndY, i, m, managedKey, t, wndClass, wndId, wndId0, wndIds, wndIsDesktop, wndIsHidden, wndTitle, x, y
   ;; HSHELL_* become global.
 
   ;; MESSAGE NAME AND         ... NUMBER    COMMENTS, POSSIBLE EVENTS
@@ -621,6 +622,30 @@ Manager_onShellMessage(wParam, lParam) {
   SetFormat, Integer, d
 
   Debug_logMessage("DEBUG[2] Manager_onShellMessage( wParam: " . wParam . ", lParam: " . lParam . " )", 2)
+
+  ;; Urgent-view dispatch must run before the hidden-window early-return:
+  ;; bug.n SW_HIDEs every window that is on a non-active view, and those
+  ;; are exactly the windows whose flashes we want to surface as red bar
+  ;; entries. Window_getHidden returns True for any SW_HIDDEN window, so
+  ;; the existing early-return swallows every meaningful HSHELL_FLASH if
+  ;; this dispatch is placed below it.
+  ;;
+  ;; Note: Manager_isManaged is called rather than InStr-ing
+  ;; Manager_managedWndIds inline. This function declares Local … which
+  ;; puts it in assume-local mode; an inline reference to
+  ;; Manager_managedWndIds would shadow as an empty local. The helper
+  ;; declares the variable Global explicitly so the read is always
+  ;; against the real global.
+  ;;
+  ;; Use the stored-key form from Manager_managedWndIds so the
+  ;; Window_#%wndId%_* dynamic-variable lookups inside Manager_markUrgent
+  ;; match the format Manager__setWinProperties used at manage time
+  ;; (typically hex in production, decimal in Yunit tests).
+  managedKey := Manager_isManaged(lParam)
+  If (wParam = HSHELL_FLASH) And lParam And managedKey {
+    Manager_markUrgent(managedKey)
+    Return
+  }
 
   wndIsHidden := Window_getHidden(lParam, wndClass, wndTitle)
   If wndIsHidden {
@@ -1358,6 +1383,7 @@ Manager_unmanage(wndId) {
   Window_#%wndId%_tags        :=
   Window_#%wndId%_isDecorated :=
   Window_#%wndId%_isFloating  :=
+  Window_#%wndId%_isUrgent    :=
   Window_#%wndId%_area        :=
   StringReplace, Bar_hideTitleWndIds, Bar_hideTitleWndIds, %wndId%`;,
   StringReplace, Manager_allWndIds, Manager_allWndIds, %wndId%`;,
@@ -1399,4 +1425,69 @@ Manager_activateViewByMouse(d) {
 	if( InStr(windowTitle, "bug.n_BAR_") = 1 ) {
 		Monitor_activateView(0, d)
 	}
+}
+
+;; If wndId names a managed window, return its entry exactly as stored
+;; in Manager_managedWndIds (which may be hex or decimal depending on
+;; the SetFormat state when Manager__setWinProperties ran). Otherwise
+;; return "". Numeric comparison so callers can pass either format —
+;; lParam from the shell hook arrives hex-formatted by the SetFormat
+;; dance at the top of Manager_onShellMessage, but synthesized Yunit
+;; tests pass decimal HWNDs; both must resolve to the same managed
+;; entry.
+;;
+;; Returning the stored-key string (not just a bool) lets the caller
+;; pass that exact string to dynamic-variable consumers like
+;; Manager_markUrgent, whose Window_#%wndId%_monitor / _tags / _isUrgent
+;; lookups only match if wndId has the same format the manage path
+;; used when it created those globals.
+Manager_isManaged(wndId) {
+  Global Manager_managedWndIds
+
+  target := wndId + 0
+  StringTrimRight, trimmed, Manager_managedWndIds, 1
+  Loop, PARSE, trimmed, `;
+  {
+    If A_LoopField And ((A_LoopField + 0) = target)
+      Return A_LoopField
+  }
+  Return ""
+}
+
+;; Mark a window's non-active views as urgent, so their bar entries can
+;; light up red. Called from the HSHELL_FLASH dispatch in
+;; Manager_onShellMessage when a managed window is flashing its taskbar
+;; entry. Active view is skipped — if the user is already looking at the
+;; window, there is nothing to draw attention to.
+Manager_markUrgent(wndId) {
+  Global Config_viewCount
+
+  wndMon := Window_#%wndId%_monitor
+  aView  := Monitor_#%wndMon%_aView_#1
+  Loop, % Config_viewCount {
+    viewBit := 1 << (A_Index - 1)
+    If (Window_#%wndId%_tags & viewBit) And Not (A_Index = aView) {
+      Window_#%wndId%_isUrgent           := True
+      View_#%wndMon%_#%A_Index%_isUrgent := True
+      Bar_updateView(wndMon, A_Index)
+    }
+  }
+}
+
+;; Win+U: jump to the first urgent view on the active monitor, scanning
+;; from the next view onward (wrap-around). Repeated presses cycle
+;; through remaining urgent views because each Monitor_activateView call
+;; clears urgency on the destination view.
+Manager_activateUrgentView() {
+  Global Config_viewCount, Manager_aMonitor
+
+  aMonitor := Manager_aMonitor
+  aView    := Monitor_#%aMonitor%_aView_#1
+  Loop, % Config_viewCount {
+    v := Manager_loop(aView, A_Index, 1, Config_viewCount)
+    If View_#%aMonitor%_#%v%_isUrgent {
+      Monitor_activateView(v)
+      Return
+    }
+  }
 }

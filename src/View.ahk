@@ -36,6 +36,7 @@ View_init(m, v)
   StringSplit, View_#%m%_#%v%_margin, View_#%m%_#%v%_margins, `;
   View_#%m%_#%v%_wndIds         := ""
   View_#%m%_#%v%_showBar        := True
+  View_#%m%_#%v%_isUrgent       := False
 }
 
 View_activateWindow(i, d = 0) {
