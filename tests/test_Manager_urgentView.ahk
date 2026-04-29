@@ -98,6 +98,23 @@ class TestManagerUrgentView
     Window_#1002_isMinimized := ""
     Window_#1002_monitor     := ""
     Window_#1002_tags        := ""
+
+    ;; Monitor #2 state used by sync-mode tests; harmless to clear when unset.
+    Monitor_#2_aView_#1 := ""
+    Monitor_#2_aView_#2 := ""
+    Monitor_#2_showBar  := ""
+    View_#2_#1_isUrgent := ""
+    View_#2_#2_isUrgent := ""
+    View_#2_#3_isUrgent := ""
+    View_#2_#1_wndIds   := ""
+    View_#2_#2_wndIds   := ""
+    View_#2_#3_wndIds   := ""
+    View_#2_#1_aWndIds  := ""
+    View_#2_#2_aWndIds  := ""
+    View_#2_#3_aWndIds  := ""
+    View_#2_#1_showBar  := ""
+    View_#2_#2_showBar  := ""
+    View_#2_#3_showBar  := ""
   }
 
   ;; --- Manager_markUrgent ---
@@ -194,6 +211,58 @@ class TestManagerUrgentView
       , "View 2 urgency should clear after activation; got '" . View_#1_#2_isUrgent . "'")
     Yunit.Assert(View_#1_#3_isUrgent = True
       , "View 3 urgency should be preserved when activating view 2; got '" . View_#1_#3_isUrgent . "'")
+  }
+
+  ActivateView_SyncMonitorViews_ClearsUrgencyOnAllSyncedMonitors()
+  {
+    Global
+
+    ;; Two monitors switching in lockstep. Both have view 2 flagged urgent.
+    ;; When the user activates view 2 from monitor 1, the sync loop pulls
+    ;; monitor 2 onto view 2 as well — its urgency must clear or the now-
+    ;; active view will render with the urgent palette.
+    Manager_monitorCount    := 2
+    Config_syncMonitorViews := 1
+
+    Monitor_#2_aView_#1 := 1
+    Monitor_#2_aView_#2 := 1
+    Monitor_#2_showBar  := True
+    View_#2_#1_isUrgent := False
+    View_#2_#2_isUrgent := False
+    View_#2_#3_isUrgent := False
+    View_#2_#1_wndIds   := ""
+    View_#2_#2_wndIds   := ""
+    View_#2_#3_wndIds   := ""
+    View_#2_#1_aWndIds  := "0;"
+    View_#2_#2_aWndIds  := "0;"
+    View_#2_#3_aWndIds  := "0;"
+    View_#2_#1_showBar  := True
+    View_#2_#2_showBar  := True
+    View_#2_#3_showBar  := True
+
+    Window_#1001_tags     := 1 << 1
+    Window_#1001_monitor  := 1
+    Window_#1001_isUrgent := True
+    View_#1_#2_wndIds     := "1001;"
+    View_#1_#2_isUrgent   := True
+
+    Window_#1002_tags     := 1 << 1
+    Window_#1002_monitor  := 2
+    Window_#1002_isUrgent := True
+    View_#2_#2_wndIds     := "1002;"
+    View_#2_#2_isUrgent   := True
+
+    Monitor_activateView(2)
+
+    Yunit.Assert(View_#1_#2_isUrgent = False
+      , "Monitor 1's view 2 urgency should clear; got '" . View_#1_#2_isUrgent . "'")
+    Yunit.Assert(Window_#1001_isUrgent = False
+      , "Monitor 1's window 1001 urgency should clear; got '" . Window_#1001_isUrgent . "'")
+
+    Yunit.Assert(View_#2_#2_isUrgent = False
+      , "Monitor 2's view 2 urgency should also clear under syncMonitorViews; got '" . View_#2_#2_isUrgent . "'")
+    Yunit.Assert(Window_#1002_isUrgent = False
+      , "Monitor 2's window 1002 urgency should also clear; got '" . Window_#1002_isUrgent . "'")
   }
 
   ;; --- integration: Manager_onShellMessage → Manager_markUrgent ---
