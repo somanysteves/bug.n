@@ -641,10 +641,12 @@ Manager_onShellMessage(wParam, lParam) {
   ;; Window_#%wndId%_* dynamic-variable lookups inside Manager_markUrgent
   ;; match the format Manager__setWinProperties used at manage time
   ;; (typically hex in production, decimal in Yunit tests).
-  managedKey := Manager_isManaged(lParam)
-  If (wParam = HSHELL_FLASH) And lParam And managedKey {
-    Manager_markUrgent(managedKey)
-    Return
+  If (wParam = HSHELL_FLASH) And lParam {
+    managedKey := Manager_isManaged(lParam)
+    If managedKey {
+      Manager_markUrgent(managedKey)
+      Return
+    }
   }
 
   wndIsHidden := Window_getHidden(lParam, wndClass, wndTitle)
