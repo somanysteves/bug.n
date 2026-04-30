@@ -112,10 +112,53 @@ Tiler_isActive(m, v) {
   Return, (Config_layoutFunction_#%l% = "tile")
 }
 
+;; Compute per-column geometry for the column-first stack grid (AwesomeWM-
+;; style). The effective column count is clamped to Min(stackMX, stackLen)
+;; so that closing a stack window doesn't leave an empty column behind. The
+;; caller's layoutStackMX setting is preserved separately — this clamp affects
+;; only the current layout pass.
+;;
+;; Outputs are 1-indexed parallel arrays of length = effective column count.
+;; Column N's rectangle is (colX[N], colY[N], colW[N], colH[N]) and contains
+;; colCount[N] windows. Windows are distributed Floor(remaining/remaining_cols);
+;; the rightmost column absorbs any remainder.
+Tiler_computeStackColumns(stackMX, stackLen, x, y, w, h, gapW, ByRef colX, ByRef colY, ByRef colW, ByRef colH, ByRef colCount) {
+  Local effCols, remaining, curX, curY, curW, curH, remCols, colWnds, subX, subY, subW, subH
+
+  colX := []
+  colY := []
+  colW := []
+  colH := []
+  colCount := []
+
+  effCols := stackMX < stackLen ? stackMX : stackLen
+  If (effCols < 1)
+    Return
+
+  remaining := stackLen
+  curX := x
+  curY := y
+  curW := w
+  curH := h
+  Loop, % effCols {
+    remCols := effCols - A_Index + 1
+    colWnds := Floor(remaining / remCols)
+    If (colWnds < 1)
+      colWnds := 1
+    Tiler_splitArea(0, 1 / remCols, curX, curY, curW, curH, gapW, subX, subY, subW, subH, curX, curY, curW, curH)
+    colX.Push(subX)
+    colY.Push(subY)
+    colW.Push(subW)
+    colH.Push(subH)
+    colCount.Push(colWnds)
+    remaining -= colWnds
+  }
+}
+
 Tiler_layoutTiles(m, v, x, y, w, h, type = "") {
   Local axis1, axis2, axis3, gapW, hasStackArea, mFact, mSplit, mXSet, mYSet, mYActual, n
   Local h1, h2, mWndCount, stackLen, subAreaCount, subAreaWndCount, subH1, subW1, subX1, subY1, w1, w2, x1, x2, y1, y2
-  Local stackMX, stackMY, stackSubAreaCount, stackColWndCount, stackWndCount, stackX, stackY, stackW, stackH, stackSubX, stackSubY, stackSubW, stackSubH
+  Local stackMX, stackMY, colX, colY, colW, colH, colCount, colBaseIdx, colWnds
 
   axis1  := Abs(View_#%m%_#%v%_layoutAxis_#1)
   axis2  := View_#%m%_#%v%_layoutAxis_#2
@@ -184,24 +227,13 @@ Tiler_layoutTiles(m, v, x, y, w, h, type = "") {
 
       ;; Grid is used if stackMX > 1, otherwise fall back to single-axis stacking
       If (stackMX > 1) {
-        ;; Column-first grid layout (AwesomeWM-style): distribute windows into columns
-        ;; using floor(remaining / remaining_cols), rightmost column absorbs extras
-        stackWndCount := stackLen
-        stackX := x2
-        stackY := y2
-        stackW := w2
-        stackH := h2
-        Loop, % stackMX {
-          If (stackWndCount <= 0)
-            Break
-          stackSubAreaCount := stackMX - A_Index + 1
-          stackColWndCount := Floor(stackWndCount / stackSubAreaCount)
-          If (stackColWndCount < 1)
-            stackColWndCount := 1
-          Tiler_splitArea(0, 1 / stackSubAreaCount, stackX, stackY, stackW, stackH, gapW, stackSubX, stackSubY, stackSubW, stackSubH, stackX, stackY, stackW, stackH)
-          Debug_logMessage("DEBUG[3] Tiler_layoutTiles: Stack col #" A_Index " with " stackColWndCount " windows", 3)
-          Tiler_stackTiles(m, v, mSplit + stackLen - stackWndCount + 1, stackColWndCount, +1, 2, stackSubX, stackSubY, stackSubW, stackSubH, gapW, type)
-          stackWndCount -= stackColWndCount
+        Tiler_computeStackColumns(stackMX, stackLen, x2, y2, w2, h2, gapW, colX, colY, colW, colH, colCount)
+        colBaseIdx := mSplit + 1
+        Loop, % colX.MaxIndex() {
+          colWnds := colCount[A_Index]
+          Debug_logMessage("DEBUG[3] Tiler_layoutTiles: Stack col #" A_Index " with " colWnds " windows", 3)
+          Tiler_stackTiles(m, v, colBaseIdx, colWnds, +1, 2, colX[A_Index], colY[A_Index], colW[A_Index], colH[A_Index], gapW, type)
+          colBaseIdx += colWnds
         }
       } Else {
         ;; Single-axis layout (original behavior)

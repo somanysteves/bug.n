@@ -98,4 +98,93 @@ class TestTiler
       Yunit.Assert(y2 = 200, "y2 expected 200, got " . y2)
     }
   }
+
+  ;; Tests for Tiler_computeStackColumns(stackMX, stackLen, x, y, w, h, gapW,
+  ;;                                     ByRef colX, ByRef colY, ByRef colW, ByRef colH, ByRef colCount)
+  ;;
+  ;; Effective columns are clamped to Min(stackMX, stackLen): closing a stack
+  ;; window must not leave an empty column. Windows distribute column-first
+  ;; via Floor(remaining / remaining_cols); rightmost column absorbs the
+  ;; remainder.
+  class StackColumns
+  {
+    OneWindowInTwoColumnGrid_FillsFullWidth()
+    {
+      ; Regression for: 2 stack windows split into 2 columns; close one,
+      ; remaining window should take the full stack width (not 50%).
+      Tiler_computeStackColumns(2, 1, 0, 0, 1000, 800, 0, colX, colY, colW, colH, colCount)
+      Yunit.Assert(colX.MaxIndex() = 1,    "expected 1 effective column, got " . colX.MaxIndex())
+      Yunit.Assert(colW[1] = 1000,         "col 1 w expected 1000, got " . colW[1])
+      Yunit.Assert(colH[1] = 800,          "col 1 h expected 800, got " . colH[1])
+      Yunit.Assert(colX[1] = 0,            "col 1 x expected 0, got " . colX[1])
+      Yunit.Assert(colY[1] = 0,            "col 1 y expected 0, got " . colY[1])
+      Yunit.Assert(colCount[1] = 1,        "col 1 count expected 1, got " . colCount[1])
+    }
+
+    OneWindowInThreeColumnGrid_FillsFullWidth()
+    {
+      ; Same clamp logic with stackMX=3.
+      Tiler_computeStackColumns(3, 1, 0, 0, 900, 600, 0, colX, colY, colW, colH, colCount)
+      Yunit.Assert(colX.MaxIndex() = 1,    "expected 1 effective column, got " . colX.MaxIndex())
+      Yunit.Assert(colW[1] = 900,          "col 1 w expected 900, got " . colW[1])
+      Yunit.Assert(colCount[1] = 1,        "col 1 count expected 1, got " . colCount[1])
+    }
+
+    TwoWindowsInTwoColumnGrid_SplitEvenly()
+    {
+      Tiler_computeStackColumns(2, 2, 0, 0, 1000, 800, 0, colX, colY, colW, colH, colCount)
+      Yunit.Assert(colX.MaxIndex() = 2,    "expected 2 columns, got " . colX.MaxIndex())
+      Yunit.Assert(colW[1] = 500,          "col 1 w expected 500, got " . colW[1])
+      Yunit.Assert(colW[2] = 500,          "col 2 w expected 500, got " . colW[2])
+      Yunit.Assert(colX[1] = 0,            "col 1 x expected 0, got " . colX[1])
+      Yunit.Assert(colX[2] = 500,          "col 2 x expected 500, got " . colX[2])
+      Yunit.Assert(colCount[1] = 1,        "col 1 count expected 1, got " . colCount[1])
+      Yunit.Assert(colCount[2] = 1,        "col 2 count expected 1, got " . colCount[2])
+    }
+
+    ThreeWindowsInTwoColumnGrid_RightColumnAbsorbsExtra()
+    {
+      ; Floor(3/2)=1 in left column; remaining 2 go in right column.
+      Tiler_computeStackColumns(2, 3, 0, 0, 1000, 800, 0, colX, colY, colW, colH, colCount)
+      Yunit.Assert(colX.MaxIndex() = 2,    "expected 2 columns, got " . colX.MaxIndex())
+      Yunit.Assert(colCount[1] = 1,        "col 1 count expected 1, got " . colCount[1])
+      Yunit.Assert(colCount[2] = 2,        "col 2 count expected 2, got " . colCount[2])
+    }
+
+    FiveWindowsInTwoColumnGrid_RightColumnGetsThree()
+    {
+      ; Floor(5/2)=2 left; remaining 3 right.
+      Tiler_computeStackColumns(2, 5, 0, 0, 1000, 800, 0, colX, colY, colW, colH, colCount)
+      Yunit.Assert(colCount[1] = 2,        "col 1 count expected 2, got " . colCount[1])
+      Yunit.Assert(colCount[2] = 3,        "col 2 count expected 3, got " . colCount[2])
+    }
+
+    FourWindowsInThreeColumnGrid_LastAbsorbsExtra()
+    {
+      ; Floor(4/3)=1, then Floor(3/2)=1, then 2 → cols of 1/1/2.
+      Tiler_computeStackColumns(3, 4, 0, 0, 900, 600, 0, colX, colY, colW, colH, colCount)
+      Yunit.Assert(colX.MaxIndex() = 3,    "expected 3 columns, got " . colX.MaxIndex())
+      Yunit.Assert(colCount[1] = 1,        "col 1 count expected 1, got " . colCount[1])
+      Yunit.Assert(colCount[2] = 1,        "col 2 count expected 1, got " . colCount[2])
+      Yunit.Assert(colCount[3] = 2,        "col 3 count expected 2, got " . colCount[3])
+    }
+
+    GapAppliesBetweenColumns()
+    {
+      ; gap=20: each column loses 10px on the shared edge.
+      Tiler_computeStackColumns(2, 2, 0, 0, 1000, 800, 20, colX, colY, colW, colH, colCount)
+      Yunit.Assert(colW[1] = 490,          "col 1 w expected 490, got " . colW[1])
+      Yunit.Assert(colW[2] = 490,          "col 2 w expected 490, got " . colW[2])
+      Yunit.Assert(colX[2] = 510,          "col 2 x expected 510 (x1+w1+gap), got " . colX[2])
+    }
+
+    OffsetOriginPreserved()
+    {
+      Tiler_computeStackColumns(2, 2, 100, 200, 1000, 800, 0, colX, colY, colW, colH, colCount)
+      Yunit.Assert(colX[1] = 100,          "col 1 x expected 100, got " . colX[1])
+      Yunit.Assert(colY[1] = 200,          "col 1 y expected 200, got " . colY[1])
+      Yunit.Assert(colX[2] = 600,          "col 2 x expected 600 (100+500), got " . colX[2])
+      Yunit.Assert(colY[2] = 200,          "col 2 y expected 200, got " . colY[2])
+    }
+  }
 }
