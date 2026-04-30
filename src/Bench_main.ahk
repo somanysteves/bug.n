@@ -39,6 +39,7 @@ SetWinDelay, 10
   Bench_windows    := 8
   Bench_iterations := 50
   Bench_commit     := ""
+  Bench_scenario   := "perf"
   argCount := A_Args.MaxIndex()
   If argCount {
     argIdx := 1
@@ -56,6 +57,9 @@ SetWinDelay, 10
       } Else If (arg = "--commit") {
         argIdx += 1
         Bench_commit := A_Args[argIdx]
+      } Else If (arg = "--scenario") {
+        argIdx += 1
+        Bench_scenario := A_Args[argIdx]
       } Else If (Main_appDir = "") {
         Main_appDir := arg
       }
@@ -71,12 +75,15 @@ SetWinDelay, 10
   If Bench_outDir
     Main_makeDir(Bench_outDir)
   Perf_init(True, Bench_out, Bench_commit)
-  Debug_logMessage("====== Bench mode: " . Bench_windows . " windows x " . Bench_iterations . " iterations -> " . Bench_out . " ======", 0)
+  Debug_logMessage("====== Bench mode: scenario=" . Bench_scenario . " " . Bench_windows . " windows x " . Bench_iterations . " iterations -> " . Bench_out . " ======", 0)
   SetTimer, Bench_kick, -500
 Return          ;; end of the auto-execute section
 
 Bench_kick:
-  Perf_runBench(Bench_windows, Bench_iterations)
+  If (Bench_scenario = "urgent")
+    Bench_runUrgent()
+  Else
+    Perf_runBench(Bench_windows, Bench_iterations)
 Return
 
 Bench_cleanup:
@@ -102,6 +109,7 @@ Main_evalCommand(command) {
 #Include %A_ScriptDir%\Debug.ahk
 #Include %A_ScriptDir%\Manager.ahk
 #Include %A_ScriptDir%\Perf.ahk
+#Include %A_ScriptDir%\Bench_urgent.ahk
 #Include %A_ScriptDir%\Manager_setCursor.ahk
 #Include %A_ScriptDir%\Monitor.ahk
 #Include %A_ScriptDir%\ResourceMonitor.ahk
@@ -110,4 +118,5 @@ Main_evalCommand(command) {
 #Include %A_ScriptDir%\View_arrange.ahk
 #Include %A_ScriptDir%\View_getTiledWndIds.ahk
 #Include %A_ScriptDir%\Window.ahk
+#Include %A_ScriptDir%\Window_getHidden.ahk
 #Include %A_ScriptDir%\MonitorManager.ahk

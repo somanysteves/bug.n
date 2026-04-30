@@ -66,20 +66,8 @@ Window_findHung(ghostWndId) {
   Return, 0
 }
 
-Window_getHidden(wndId, ByRef wndClass, ByRef wndTitle) {
-  WinGetClass, wndClass, ahk_id %wndId%
-  WinGetTitle, wndTitle, ahk_id %wndId%
-  If Not wndClass And Not wndTitle {
-    detectHiddenWnds := A_DetectHiddenWindows
-    DetectHiddenWindows, On
-    WinGetClass, wndClass, ahk_id %wndId%
-    WinGetTitle, wndTitle, ahk_id %wndId%
-    DetectHiddenWindows, %detectHiddenWnds%
-    ;; If now wndClass Or wndTitle, but Not wndClass And Not wndTitle before, wnd is hidden.
-    Return, (wndClass Or wndTitle)
-  } Else
-    Return, False
-}
+;; Window_getHidden lives in src/Window_getHidden.ahk so tests can stub it out.
+;; See tests/README.md for the stub-swap pattern.
 
 Window_getPosEx(hWindow, ByRef X = "", ByRef Y = "", ByRef Width = "", ByRef Height = "", ByRef Offset_X = "", ByRef Offset_Y = "") {
   Static Dummy5693, RECTPlus, S_OK := 0x0, DWMWA_EXTENDED_FRAME_BOUNDS := 9
@@ -194,6 +182,14 @@ Window_isGhost(wndId) {
 ;; 1 - Hung
 Window_isHung(wndId) {
   Local detectHidden, result, WM_NULL
+
+  ;; Sending WM_NULL to ahk_id 0 throws (the ID isn't a window). Treat
+  ;; "no window" as "not hung" — there's nothing to be hung about. This
+  ;; also makes the function safe to call from headless test runs where
+  ;; the active-window fallbacks (e.g. Manager_winActivate's bug.n_BAR_*
+  ;; WinExist lookup) can legitimately resolve to 0.
+  If Not wndId
+    Return 0
 
   WM_NULL = 0
   detectHidden := A_DetectHiddenWindows
