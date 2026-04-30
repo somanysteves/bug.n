@@ -939,7 +939,7 @@ Manager_restoreWindowBorders()
 ;; If the state is completely different, this function won't do much. However, if restoring from a crash
 ;; or simply restarting bug.n, it should completely recover the window state.
 Manager__restoreWindowState(filename) {
-  Local vidx, widx, i, j, m, v, candidate_set, detectHidden, view_set, excluded_view_set, view_m0, view_v0, view_list0, wnds0, items0, wndPName, view_var, isManaged, isFloating, isDecorated, hideTitle
+  Local vidx, widx, i, j, m, v, candidate_set, detectHidden, view_set, excluded_view_set, view_m0, view_v0, view_list0, wnds0, items0, wndPName, view_var, isManaged, isFloating, isDecorated, hideTitle, ruleIsManaged, ruleM, ruleTags, ruleIsFloating, ruleIsDecorated, ruleHideTitle, ruleAction
 
   If Not FileExist(filename)
     Return
@@ -1003,6 +1003,17 @@ Manager__restoreWindowState(filename) {
     DetectHiddenWindows, %detectHidden%
     If Not ( items%j% = wndPName ) {
       Debug_logMessage("Window ahk_id " . i . " process '" . wndPName . "' doesn't match expected '" . items%j% . "', forgetting this window", 0)
+      Continue
+    }
+
+    ;; Re-apply current rules — a rule added since this state was saved may now exclude this window.
+    ;; DetectHiddenWindows must be On so WinGetClass/WinGetTitle inside Manager_applyRules
+    ;; can read the class and title of windows that bug.n has hidden on inactive views.
+    DetectHiddenWindows, On
+    Manager_applyRules(i, ruleIsManaged, ruleM, ruleTags, ruleIsFloating, ruleIsDecorated, ruleHideTitle, ruleAction)
+    DetectHiddenWindows, %detectHidden%
+    If Not ruleIsManaged {
+      Debug_logMessage("Window ahk_id " . i . " excluded by current rules during state restore, skipping.", 0)
       Continue
     }
 
