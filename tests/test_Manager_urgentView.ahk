@@ -383,4 +383,37 @@ class TestManagerUrgentView
     Yunit.Assert(Monitor_#1_aView_#1 = 3
       , "Second press should cycle to view 3; got " . Monitor_#1_aView_#1)
   }
+
+  ;; Regression guard: when the urgent window is NOT the most-recently-active
+  ;; window in its view, Win+U used to land on the view but focus the wrong
+  ;; window — the head of aWndIds, not the flashing one. Monitor_activateView
+  ;; ends with `Manager_winActivate(View_getActiveWindow(m, i))`, and
+  ;; View_getActiveWindow walks aWndIds head-first. So for Win+U to focus the
+  ;; urgent window, Manager_activateUrgentView must promote it to the head of
+  ;; the destination view's aWndIds before delegating to Monitor_activateView.
+  ActivateUrgentView_FocusesUrgentWindowNotMostRecentlyActive()
+  {
+    Global
+
+    ;; View 2 holds two windows. 1001 was last active there; 1002 is the one
+    ;; that flashed. With 1001 at the head of aWndIds, Monitor_activateView's
+    ;; final winActivate resolves to 1001 — the wrong window — unless Win+U
+    ;; promotes the urgent window first.
+    Window_#1001_tags     := 1 << 1
+    Window_#1002_tags     := 1 << 1
+    View_#1_#2_wndIds     := "1001;1002;"
+    View_#1_#2_aWndIds    := "1001;1002;0;"
+    View_#1_#2_isUrgent   := True
+    Window_#1002_isUrgent := True
+
+    Manager_activateUrgentView()
+
+    Yunit.Assert(Monitor_#1_aView_#1 = 2
+      , "Win+U should still jump to view 2; got " . Monitor_#1_aView_#1)
+    Yunit.Assert(SubStr(View_#1_#2_aWndIds, 1, 5) = "1002;"
+      , "Win+U must promote the urgent window (1002) to the head of "
+      . "View_#1_#2_aWndIds so Manager_winActivate focuses it, not the "
+      . "previously-active 1001; got View_#1_#2_aWndIds = '"
+      . View_#1_#2_aWndIds . "'")
+  }
 }

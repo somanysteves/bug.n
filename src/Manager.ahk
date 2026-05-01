@@ -1491,6 +1491,11 @@ Manager_markUrgent(wndId) {
 ;; from the next view onward (wrap-around). Repeated presses cycle
 ;; through remaining urgent views because each Monitor_activateView call
 ;; clears urgency on the destination view.
+;;
+;; Promote the flashing window to the head of the destination view's
+;; aWndIds before delegating, so Monitor_activateView's final
+;; View_getActiveWindow → Manager_winActivate focuses the urgent window
+;; instead of whichever window happened to be most-recently-active there.
 Manager_activateUrgentView() {
   Global Config_viewCount, Manager_aMonitor
 
@@ -1499,6 +1504,14 @@ Manager_activateUrgentView() {
   Loop, % Config_viewCount {
     v := Manager_loop(aView, A_Index, 1, Config_viewCount)
     If View_#%aMonitor%_#%v%_isUrgent {
+      StringTrimRight, urgentWndIds, View_#%aMonitor%_#%v%_wndIds, 1
+      Loop, PARSE, urgentWndIds, `;
+      {
+        If A_LoopField And Window_#%A_LoopField%_isUrgent {
+          View_setActiveWindow(aMonitor, v, A_LoopField)
+          Break
+        }
+      }
       Monitor_activateView(v)
       Return
     }
