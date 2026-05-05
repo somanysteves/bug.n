@@ -130,6 +130,8 @@ Monitor_activateView(i, d = 0) {
   }
 
   wndId := View_getActiveWindow(aMonitor, i)
+  If wndId
+    DllCall("ShowWindow", "Ptr", wndId, "Int", 8)  ;; SW_SHOWNA sync: ensure visible before WinActivate
   Manager_winActivate(wndId)
   Perf_end("Monitor_activateView")
 }

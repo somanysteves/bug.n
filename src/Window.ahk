@@ -181,27 +181,14 @@ Window_isGhost(wndId) {
 ;; 0 - Not hung
 ;; 1 - Hung
 Window_isHung(wndId) {
-  Local detectHidden, result, WM_NULL
-
-  ;; Sending WM_NULL to ahk_id 0 throws (the ID isn't a window). Treat
-  ;; "no window" as "not hung" — there's nothing to be hung about. This
-  ;; also makes the function safe to call from headless test runs where
-  ;; the active-window fallbacks (e.g. Manager_winActivate's bug.n_BAR_*
-  ;; WinExist lookup) can legitimately resolve to 0.
+  ;; IsHungAppWindow queries the OS kernel flag directly — no message sent,
+  ;; never blocks. Returns true only for windows that have been unresponsive
+  ;; for >5 seconds (the Windows ghost threshold), so it never produces the
+  ;; false positives that a short SendMessage timeout does for windows that
+  ;; are merely slow (e.g. resuming from sleep or mid-ShowWindowAsync).
   If Not wndId
     Return 0
-
-  WM_NULL = 0
-  detectHidden := A_DetectHiddenWindows
-  DetectHiddenWindows, On
-  SendMessage, WM_NULL, , , , ahk_id %wndId%
-  result := ErrorLevel
-  DetectHiddenWindows, %detectHidden%
-
-  If result
-    Return, 1
-  Else
-    Return, 0
+  Return DllCall("IsHungAppWindow", "Ptr", wndId, "Int")
 }
 
 Window_isNotVisible(wndId) {

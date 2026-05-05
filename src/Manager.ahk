@@ -1300,10 +1300,11 @@ Manager_initial_sync(doRestore) {
 ;;   those, which have at least a title or class.
 Manager_sync(ByRef wndIds = "")
 {
-  Local a, flag, shownWndIds, v, wndId
+  Local a, activeId, flag, shownWndIds, v, wndId
   Perf_start("Manager_sync")
   a := 0
 
+  WinGet, activeId, ID, A
   shownWndIds := ""
   Loop, % Manager_monitorCount
   {
@@ -1327,7 +1328,7 @@ Manager_sync(ByRef wndIds = "")
         If flag
           a := 1
       }
-      Else If Not Window_isHung(wndId%A_Index%)
+      Else If Not Window_isHung(wndId%A_Index%) And (wndId%A_Index% = activeId)
       {
         ;; This is a window that is already managed but was brought into focus by something.
         ;; Maybe it would be useful to do something with it.
@@ -1499,8 +1500,9 @@ Manager_markUrgent(wndId) {
 Manager_activateUrgentView() {
   Global Config_viewCount, Manager_aMonitor
 
-  aMonitor := Manager_aMonitor
-  aView    := Monitor_#%aMonitor%_aView_#1
+  aMonitor    := Manager_aMonitor
+  aView       := Monitor_#%aMonitor%_aView_#1
+  urgentWndId := ""
   Loop, % Config_viewCount {
     v := Manager_loop(aView, A_Index, 1, Config_viewCount)
     If View_#%aMonitor%_#%v%_isUrgent {
@@ -1508,11 +1510,16 @@ Manager_activateUrgentView() {
       Loop, PARSE, urgentWndIds, `;
       {
         If A_LoopField And Window_#%A_LoopField%_isUrgent {
+          urgentWndId := A_LoopField
           View_setActiveWindow(aMonitor, v, A_LoopField)
           Break
         }
       }
       Monitor_activateView(v)
+      If urgentWndId {
+        DllCall("ShowWindow", "Ptr", urgentWndId, "Int", 8)
+        Manager_winActivate(urgentWndId)
+      }
       Return
     }
   }
