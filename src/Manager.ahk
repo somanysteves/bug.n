@@ -145,7 +145,7 @@ Manager_cleanup()
   Manager_hideShow := True
   Loop, PARSE, wndIds, `;
   {
-    Window_show(A_LoopField)
+    Window_showAsync(A_LoopField)
     If Not Config_showBorder
       Window_set(A_LoopField, "Style", "+0x40000")
     Window_set(A_LoopField, "Style", "+0xC00000")
@@ -483,6 +483,7 @@ Manager_moveWindow() {
 
 Manager_onDisplayChange(a, wParam, uMsg, lParam) {
   Global Config_monitorDisplayChangeMessages, Manager_displayChangeSessionChoice
+  Global Manager_pendingDisplayChangeDecision
 
   Debug_logMessage("DEBUG[1] Manager_onDisplayChange( a: " . a . ", uMsg: " . uMsg . ", wParam: " . wParam . ", lParam: " . lParam . " )", 1)
 
@@ -492,8 +493,16 @@ Manager_onDisplayChange(a, wParam, uMsg, lParam) {
     Manager_displayChangeRecordSessionChoice(choice, remember)
     decision := Manager_displayChangeDecide(Config_monitorDisplayChangeMessages, choice)
   }
-  Manager_displayChangeApply(decision)
+  Manager_pendingDisplayChangeDecision := decision
+  SetTimer, Manager_displayChangeFire, -2000
 }
+
+;; Debounced handler — fires 2 s after the last WM_DISPLAYCHANGE. Multiple
+;; rapid events (e.g. Citrix reconnect cycling the virtual display) collapse
+;; into a single call, giving the display stack time to settle first.
+Manager_displayChangeFire:
+  Manager_displayChangeApply(Manager_pendingDisplayChangeDecision)
+Return
 
 ;; Returns the action to take for a WM_DISPLAYCHANGE event, given the
 ;; persistent config setting and any session-only override the user picked
@@ -519,6 +528,7 @@ Manager_displayChangeDecide(configValue, sessionChoice) {
 Manager_displayChangeApply(decision) {
   Global Manager_monitorCount
 
+  Debug_logMessage("DEBUG[0] displayChangeApply: decision=" . decision, 0)
   If (decision = "reset") {
     Manager_resetMonitorConfiguration()
   } Else If (decision = "rearrange") {
@@ -847,12 +857,16 @@ Manager_registerShellHook() {
 ;; SKAN: How to Hook on to Shell to receive its messages? (http://www.autohotkey.com/forum/viewtopic.php?p=123323#123323)
 
 Manager_resetMonitorConfiguration() {
-  Local GuiN, hWnd, i, j, m, mPrimary, wndClass, wndIds, wndTitle
+  Local GuiN, hWnd, i, j, m, mPrimary, mmngrBefore, allSame, wndClass, wndIds, wndTitle
 
+  mmngrBefore := New MonitorManager()
+  Debug_logMessage("DEBUG[0] resetMonitorConfig: entry, monitorCount=" . Manager_monitorCount, 0)
   m := Manager_monitorCount
   SysGet, Manager_monitorCount, MonitorCount
+  Debug_logMessage("DEBUG[0] resetMonitorConfig: old=" . m . " new=" . Manager_monitorCount, 0)
   If (Manager_monitorCount < m) {
     ;; A monitor has been disconnected. Which one?
+    Debug_logMessage("DEBUG[0] resetMonitorConfig: branch=disconnect", 0)
     i := Monitor_find(-1, m)
     If (i > 0) {
       SysGet, mPrimary, MonitorPrimary
@@ -873,38 +887,66 @@ Manager_resetMonitorConfiguration() {
       Loop, % m - i {
         j := i + A_Index
         Monitor_moveToIndex(j, j - 1)
+        Debug_logMessage("DEBUG[0] resetMonitorConfig: disconnect Bar_init(" . (j-1) . ") start", 0)
         Monitor_getWorkArea(j - 1)
         Bar_init(j - 1)
+        Debug_logMessage("DEBUG[0] resetMonitorConfig: disconnect Bar_init(" . (j-1) . ") done", 0)
       }
     }
   } Else If (Manager_monitorCount > m) {
     ;; A monitor has been connected. Where has it been put?
+    Debug_logMessage("DEBUG[0] resetMonitorConfig: branch=connect", 0)
     i := Monitor_find(+1, Manager_monitorCount)
     If (i > 0) {
       Loop, % Manager_monitorCount - i {
         j := Manager_monitorCount - A_Index
         Monitor_moveToIndex(j, j + 1)
+        Debug_logMessage("DEBUG[0] resetMonitorConfig: connect Bar_init(" . (j+1) . ") start", 0)
         Monitor_getWorkArea(j + 1)
         Bar_init(j + 1)
+        Debug_logMessage("DEBUG[0] resetMonitorConfig: connect Bar_init(" . (j+1) . ") done", 0)
       }
+      Debug_logMessage("DEBUG[0] resetMonitorConfig: connect Monitor_init(" . i . ") start", 0)
       Monitor_init(i, True)
+      Debug_logMessage("DEBUG[0] resetMonitorConfig: connect Monitor_init(" . i . ") done", 0)
     }
   } Else {
     ;; Has the resolution of a monitor been changed?
     mmngr2 := New MonitorManager()
+    allSame := True
     Loop, % Manager_monitorCount {
-      Monitor_getWorkArea(A_Index)
       Debug_logMessage("DEBUG[6] MonitorW: " . Monitor_#%A_Index%_width . ", MMW1: " . mmngr1.monitors[A_Index].width . ", MM1dpiX: " . mmngr1.monitors[A_Index].dpiX . ", MM1scaleX: " . mmngr1.monitors[A_Index].scaleX . ", MMW2: " . mmngr2.monitors[A_Index].width . ", MM2dpiX: " . mmngr2.monitors[A_Index].dpiX . ", MM2scaleX: " . mmngr2.monitors[A_Index].scaleX, 6)
-      Bar_init(A_Index)
+      If (mmngrBefore.monitors[A_Index].width  != mmngr2.monitors[A_Index].width
+       Or mmngrBefore.monitors[A_Index].dpiX   != mmngr2.monitors[A_Index].dpiX
+       Or mmngrBefore.monitors[A_Index].scaleX != mmngr2.monitors[A_Index].scaleX)
+        allSame := False
+    }
+    If Not allSame {
+      Loop, % Manager_monitorCount {
+        Monitor_getWorkArea(A_Index)
+        Debug_logMessage("DEBUG[0] resetMonitorConfig: else Bar_init(" . A_Index . ") start", 0)
+        Bar_init(A_Index)
+        Debug_logMessage("DEBUG[0] resetMonitorConfig: else Bar_init(" . A_Index . ") done", 0)
+      }
+    } Else {
+      Debug_logMessage("DEBUG[0] resetMonitorConfig: else branch, config unchanged, skipping Bar_init", 0)
     }
     mmngr2 := ""
   }
+  Debug_logMessage("DEBUG[0] resetMonitorConfig: saveState start", 0)
   Manager_saveState()
+  Debug_logMessage("DEBUG[0] resetMonitorConfig: saveState done", 0)
   Loop, % Manager_monitorCount {
+    Debug_logMessage("DEBUG[0] resetMonitorConfig: View_arrange(" . A_Index . ") start", 0)
     View_arrange(A_Index, Monitor_#%A_Index%_aView_#1)
+    Debug_logMessage("DEBUG[0] resetMonitorConfig: View_arrange(" . A_Index . ") done", 0)
+    Debug_logMessage("DEBUG[0] resetMonitorConfig: Bar_updateView(" . A_Index . ") start", 0)
     Bar_updateView(A_Index, Monitor_#%A_Index%_aView_#1)
+    Debug_logMessage("DEBUG[0] resetMonitorConfig: Bar_updateView(" . A_Index . ") done", 0)
   }
+  Debug_logMessage("DEBUG[0] resetMonitorConfig: restoreWindowState start", 0)
   Manager__restoreWindowState(Main_autoWindowState)
+  Debug_logMessage("DEBUG[0] resetMonitorConfig: restoreWindowState done", 0)
   Bar_updateStatus()
   Bar_updateTitle()
 
