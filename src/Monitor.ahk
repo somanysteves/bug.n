@@ -130,8 +130,11 @@ Monitor_activateView(i, d = 0) {
   }
 
   wndId := View_getActiveWindow(aMonitor, i)
-  If wndId
-    DllCall("ShowWindow", "Ptr", wndId, "Int", 8)  ;; SW_SHOWNA sync: ensure visible before WinActivate
+  ;; Pre-show via SW_SHOWNA so WinActivate has a visible target. Skip if
+  ;; hung — ShowWindow can block, and Manager_winActivate would no-op on
+  ;; a hung target anyway (Window_activate's Window_isHung guard).
+  If wndId And Not Window_isHung(wndId)
+    DllCall("ShowWindow", "Ptr", wndId, "Int", 8)
   Manager_winActivate(wndId)
   Perf_end("Monitor_activateView")
 }

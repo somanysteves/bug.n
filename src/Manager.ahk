@@ -1291,6 +1291,14 @@ Manager_initial_sync(doRestore) {
   }
 }
 
+;; Pure classifier for Manager_sync's "already managed but reactivated"
+;; branch. Extracted so tests can pin this gate without faking WinGet.
+;; Reports True only when wndId is the active window and not hung —
+;; matches the loop's intent ("was brought into focus by something").
+Manager_syncShouldReportActive(wndId, activeId, isHung) {
+  Return (wndId = activeId) And (Not isHung)
+}
+
 ;; @todo: This constantly tries to re-add windows that are never going to be manageable.
 ;;   Manager_manage should probably ignore all windows that are already in Manager_allWndIds.
 ;;   The problem was, that i. a. claws-mail triggers Manager_sync, but the application window
@@ -1328,7 +1336,7 @@ Manager_sync(ByRef wndIds = "")
         If flag
           a := 1
       }
-      Else If Not Window_isHung(wndId%A_Index%) And (wndId%A_Index% = activeId)
+      Else If Manager_syncShouldReportActive(wndId%A_Index%, activeId, Window_isHung(wndId%A_Index%))
       {
         ;; This is a window that is already managed but was brought into focus by something.
         ;; Maybe it would be useful to do something with it.
@@ -1517,7 +1525,11 @@ Manager_activateUrgentView() {
       }
       Monitor_activateView(v)
       If urgentWndId {
-        DllCall("ShowWindow", "Ptr", urgentWndId, "Int", 8)
+        ;; Pre-show via SW_SHOWNA so WinActivate has a visible target. Skip if
+        ;; hung — ShowWindow can block, and Manager_winActivate would no-op on
+        ;; a hung target anyway (Window_activate's Window_isHung guard).
+        If Not Window_isHung(urgentWndId)
+          DllCall("ShowWindow", "Ptr", urgentWndId, "Int", 8)
         Manager_winActivate(urgentWndId)
       }
       Return
