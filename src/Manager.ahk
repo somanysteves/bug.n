@@ -482,10 +482,21 @@ Manager_moveWindow() {
 }
 
 Manager_onDisplayChange(a, wParam, uMsg, lParam) {
-  Global Config_monitorDisplayChangeMessages, Manager_displayChangeSessionChoice
-  Global Manager_pendingDisplayChangeDecision
-
   Debug_logMessage("DEBUG[1] Manager_onDisplayChange( a: " . a . ", uMsg: " . uMsg . ", wParam: " . wParam . ", lParam: " . lParam . " )", 1)
+  SetTimer, Manager_displayChangeFire, -2000
+}
+
+;; Debounced handler — fires 2 s after the last WM_DISPLAYCHANGE. Multiple
+;; rapid events (e.g. virtual display cycling on session resume) collapse
+;; into one call after the display settles. Decision/prompt/apply all run
+;; inside the timer so the synchronous prompt dialog can't stack during a
+;; storm.
+Manager_displayChangeFire:
+  Manager_displayChangeProcess()
+Return
+
+Manager_displayChangeProcess() {
+  Global Config_monitorDisplayChangeMessages, Manager_displayChangeSessionChoice
 
   decision := Manager_displayChangeDecide(Config_monitorDisplayChangeMessages, Manager_displayChangeSessionChoice)
   If (decision = "prompt") {
@@ -493,16 +504,8 @@ Manager_onDisplayChange(a, wParam, uMsg, lParam) {
     Manager_displayChangeRecordSessionChoice(choice, remember)
     decision := Manager_displayChangeDecide(Config_monitorDisplayChangeMessages, choice)
   }
-  Manager_pendingDisplayChangeDecision := decision
-  SetTimer, Manager_displayChangeFire, -2000
+  Manager_displayChangeApply(decision)
 }
-
-;; Debounced handler — fires 2 s after the last WM_DISPLAYCHANGE. Multiple
-;; rapid events (e.g. Citrix reconnect cycling the virtual display) collapse
-;; into a single call, giving the display stack time to settle first.
-Manager_displayChangeFire:
-  Manager_displayChangeApply(Manager_pendingDisplayChangeDecision)
-Return
 
 ;; Returns the action to take for a WM_DISPLAYCHANGE event, given the
 ;; persistent config setting and any session-only override the user picked
@@ -857,9 +860,8 @@ Manager_registerShellHook() {
 ;; SKAN: How to Hook on to Shell to receive its messages? (http://www.autohotkey.com/forum/viewtopic.php?p=123323#123323)
 
 Manager_resetMonitorConfiguration() {
-  Local GuiN, hWnd, i, j, m, mPrimary, mmngrBefore, allSame, wndClass, wndIds, wndTitle
+  Local GuiN, hWnd, i, j, m, mPrimary, wndClass, wndIds, wndTitle
 
-  mmngrBefore := New MonitorManager()
   Debug_logMessage("DEBUG[6] resetMonitorConfig: entry, monitorCount=" . Manager_monitorCount, 6)
   m := Manager_monitorCount
   SysGet, Manager_monitorCount, MonitorCount
@@ -913,23 +915,12 @@ Manager_resetMonitorConfiguration() {
   } Else {
     ;; Has the resolution of a monitor been changed?
     mmngr2 := New MonitorManager()
-    allSame := True
     Loop, % Manager_monitorCount {
+      Monitor_getWorkArea(A_Index)
       Debug_logMessage("DEBUG[6] MonitorW: " . Monitor_#%A_Index%_width . ", MMW1: " . mmngr1.monitors[A_Index].width . ", MM1dpiX: " . mmngr1.monitors[A_Index].dpiX . ", MM1scaleX: " . mmngr1.monitors[A_Index].scaleX . ", MMW2: " . mmngr2.monitors[A_Index].width . ", MM2dpiX: " . mmngr2.monitors[A_Index].dpiX . ", MM2scaleX: " . mmngr2.monitors[A_Index].scaleX, 6)
-      If (mmngrBefore.monitors[A_Index].width  != mmngr2.monitors[A_Index].width
-       Or mmngrBefore.monitors[A_Index].dpiX   != mmngr2.monitors[A_Index].dpiX
-       Or mmngrBefore.monitors[A_Index].scaleX != mmngr2.monitors[A_Index].scaleX)
-        allSame := False
-    }
-    If Not allSame {
-      Loop, % Manager_monitorCount {
-        Monitor_getWorkArea(A_Index)
-        Debug_logMessage("DEBUG[6] resetMonitorConfig: else Bar_init(" . A_Index . ") start", 6)
-        Bar_init(A_Index)
-        Debug_logMessage("DEBUG[6] resetMonitorConfig: else Bar_init(" . A_Index . ") done", 6)
-      }
-    } Else {
-      Debug_logMessage("DEBUG[6] resetMonitorConfig: else branch, config unchanged, skipping Bar_init", 6)
+      Debug_logMessage("DEBUG[6] resetMonitorConfig: else Bar_init(" . A_Index . ") start", 6)
+      Bar_init(A_Index)
+      Debug_logMessage("DEBUG[6] resetMonitorConfig: else Bar_init(" . A_Index . ") done", 6)
     }
     mmngr2 := ""
   }
