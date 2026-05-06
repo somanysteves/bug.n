@@ -528,7 +528,7 @@ Manager_displayChangeDecide(configValue, sessionChoice) {
 Manager_displayChangeApply(decision) {
   Global Manager_monitorCount
 
-  Debug_logMessage("DEBUG[0] displayChangeApply: decision=" . decision, 0)
+  Debug_logMessage("DEBUG[6] displayChangeApply: decision=" . decision, 6)
   If (decision = "reset") {
     Manager_resetMonitorConfiguration()
   } Else If (decision = "rearrange") {
@@ -860,13 +860,13 @@ Manager_resetMonitorConfiguration() {
   Local GuiN, hWnd, i, j, m, mPrimary, mmngrBefore, allSame, wndClass, wndIds, wndTitle
 
   mmngrBefore := New MonitorManager()
-  Debug_logMessage("DEBUG[0] resetMonitorConfig: entry, monitorCount=" . Manager_monitorCount, 0)
+  Debug_logMessage("DEBUG[6] resetMonitorConfig: entry, monitorCount=" . Manager_monitorCount, 6)
   m := Manager_monitorCount
   SysGet, Manager_monitorCount, MonitorCount
-  Debug_logMessage("DEBUG[0] resetMonitorConfig: old=" . m . " new=" . Manager_monitorCount, 0)
+  Debug_logMessage("DEBUG[6] resetMonitorConfig: old=" . m . " new=" . Manager_monitorCount, 6)
   If (Manager_monitorCount < m) {
     ;; A monitor has been disconnected. Which one?
-    Debug_logMessage("DEBUG[0] resetMonitorConfig: branch=disconnect", 0)
+    Debug_logMessage("DEBUG[6] resetMonitorConfig: branch=disconnect", 6)
     i := Monitor_find(-1, m)
     If (i > 0) {
       SysGet, mPrimary, MonitorPrimary
@@ -887,28 +887,28 @@ Manager_resetMonitorConfiguration() {
       Loop, % m - i {
         j := i + A_Index
         Monitor_moveToIndex(j, j - 1)
-        Debug_logMessage("DEBUG[0] resetMonitorConfig: disconnect Bar_init(" . (j-1) . ") start", 0)
+        Debug_logMessage("DEBUG[6] resetMonitorConfig: disconnect Bar_init(" . (j-1) . ") start", 6)
         Monitor_getWorkArea(j - 1)
         Bar_init(j - 1)
-        Debug_logMessage("DEBUG[0] resetMonitorConfig: disconnect Bar_init(" . (j-1) . ") done", 0)
+        Debug_logMessage("DEBUG[6] resetMonitorConfig: disconnect Bar_init(" . (j-1) . ") done", 6)
       }
     }
   } Else If (Manager_monitorCount > m) {
     ;; A monitor has been connected. Where has it been put?
-    Debug_logMessage("DEBUG[0] resetMonitorConfig: branch=connect", 0)
+    Debug_logMessage("DEBUG[6] resetMonitorConfig: branch=connect", 6)
     i := Monitor_find(+1, Manager_monitorCount)
     If (i > 0) {
       Loop, % Manager_monitorCount - i {
         j := Manager_monitorCount - A_Index
         Monitor_moveToIndex(j, j + 1)
-        Debug_logMessage("DEBUG[0] resetMonitorConfig: connect Bar_init(" . (j+1) . ") start", 0)
+        Debug_logMessage("DEBUG[6] resetMonitorConfig: connect Bar_init(" . (j+1) . ") start", 6)
         Monitor_getWorkArea(j + 1)
         Bar_init(j + 1)
-        Debug_logMessage("DEBUG[0] resetMonitorConfig: connect Bar_init(" . (j+1) . ") done", 0)
+        Debug_logMessage("DEBUG[6] resetMonitorConfig: connect Bar_init(" . (j+1) . ") done", 6)
       }
-      Debug_logMessage("DEBUG[0] resetMonitorConfig: connect Monitor_init(" . i . ") start", 0)
+      Debug_logMessage("DEBUG[6] resetMonitorConfig: connect Monitor_init(" . i . ") start", 6)
       Monitor_init(i, True)
-      Debug_logMessage("DEBUG[0] resetMonitorConfig: connect Monitor_init(" . i . ") done", 0)
+      Debug_logMessage("DEBUG[6] resetMonitorConfig: connect Monitor_init(" . i . ") done", 6)
     }
   } Else {
     ;; Has the resolution of a monitor been changed?
@@ -924,29 +924,29 @@ Manager_resetMonitorConfiguration() {
     If Not allSame {
       Loop, % Manager_monitorCount {
         Monitor_getWorkArea(A_Index)
-        Debug_logMessage("DEBUG[0] resetMonitorConfig: else Bar_init(" . A_Index . ") start", 0)
+        Debug_logMessage("DEBUG[6] resetMonitorConfig: else Bar_init(" . A_Index . ") start", 6)
         Bar_init(A_Index)
-        Debug_logMessage("DEBUG[0] resetMonitorConfig: else Bar_init(" . A_Index . ") done", 0)
+        Debug_logMessage("DEBUG[6] resetMonitorConfig: else Bar_init(" . A_Index . ") done", 6)
       }
     } Else {
-      Debug_logMessage("DEBUG[0] resetMonitorConfig: else branch, config unchanged, skipping Bar_init", 0)
+      Debug_logMessage("DEBUG[6] resetMonitorConfig: else branch, config unchanged, skipping Bar_init", 6)
     }
     mmngr2 := ""
   }
-  Debug_logMessage("DEBUG[0] resetMonitorConfig: saveState start", 0)
+  Debug_logMessage("DEBUG[6] resetMonitorConfig: saveState start", 6)
   Manager_saveState()
-  Debug_logMessage("DEBUG[0] resetMonitorConfig: saveState done", 0)
+  Debug_logMessage("DEBUG[6] resetMonitorConfig: saveState done", 6)
   Loop, % Manager_monitorCount {
-    Debug_logMessage("DEBUG[0] resetMonitorConfig: View_arrange(" . A_Index . ") start", 0)
+    Debug_logMessage("DEBUG[6] resetMonitorConfig: View_arrange(" . A_Index . ") start", 6)
     View_arrange(A_Index, Monitor_#%A_Index%_aView_#1)
-    Debug_logMessage("DEBUG[0] resetMonitorConfig: View_arrange(" . A_Index . ") done", 0)
-    Debug_logMessage("DEBUG[0] resetMonitorConfig: Bar_updateView(" . A_Index . ") start", 0)
+    Debug_logMessage("DEBUG[6] resetMonitorConfig: View_arrange(" . A_Index . ") done", 6)
+    Debug_logMessage("DEBUG[6] resetMonitorConfig: Bar_updateView(" . A_Index . ") start", 6)
     Bar_updateView(A_Index, Monitor_#%A_Index%_aView_#1)
-    Debug_logMessage("DEBUG[0] resetMonitorConfig: Bar_updateView(" . A_Index . ") done", 0)
+    Debug_logMessage("DEBUG[6] resetMonitorConfig: Bar_updateView(" . A_Index . ") done", 6)
   }
-  Debug_logMessage("DEBUG[0] resetMonitorConfig: restoreWindowState start", 0)
+  Debug_logMessage("DEBUG[6] resetMonitorConfig: restoreWindowState start", 6)
   Manager__restoreWindowState(Main_autoWindowState)
-  Debug_logMessage("DEBUG[0] resetMonitorConfig: restoreWindowState done", 0)
+  Debug_logMessage("DEBUG[6] resetMonitorConfig: restoreWindowState done", 6)
   Bar_updateStatus()
   Bar_updateTitle()
 
