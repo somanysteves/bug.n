@@ -497,14 +497,30 @@ Return
 
 Manager_displayChangeProcess() {
   Global Config_monitorDisplayChangeMessages, Manager_displayChangeSessionChoice
+  Global Manager_displayChangeInProgress, Manager_displayChangePending
 
-  decision := Manager_displayChangeDecide(Config_monitorDisplayChangeMessages, Manager_displayChangeSessionChoice)
-  If (decision = "prompt") {
-    Manager_displayChangePrompt(choice, remember)
-    Manager_displayChangeRecordSessionChoice(choice, remember)
-    decision := Manager_displayChangeDecide(Config_monitorDisplayChangeMessages, choice)
+  ;; Re-entrancy guard: Manager_displayChangePrompt spins on Sleep, so a
+  ;; new WM_DISPLAYCHANGE during the prompt can re-arm the debounce timer
+  ;; and re-fire this function before the original returns. Set a pending
+  ;; flag and let the active run pick it up after its current cycle.
+  If Manager_displayChangeInProgress {
+    Manager_displayChangePending := True
+    Return
   }
-  Manager_displayChangeApply(decision)
+  Manager_displayChangeInProgress := True
+
+  Loop {
+    Manager_displayChangePending := False
+    decision := Manager_displayChangeDecide(Config_monitorDisplayChangeMessages, Manager_displayChangeSessionChoice)
+    If (decision = "prompt") {
+      Manager_displayChangePrompt(choice, remember)
+      Manager_displayChangeRecordSessionChoice(choice, remember)
+      decision := Manager_displayChangeDecide(Config_monitorDisplayChangeMessages, choice)
+    }
+    Manager_displayChangeApply(decision)
+  } Until !Manager_displayChangePending
+
+  Manager_displayChangeInProgress := False
 }
 
 ;; Returns the action to take for a WM_DISPLAYCHANGE event, given the
