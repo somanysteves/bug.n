@@ -389,19 +389,32 @@ Monitor_toggleTaskBar(m := 0) {
 ;; flag stale; the work area then drifts from reality and Win+B takes two
 ;; presses to dismiss instead of one. Treat the observed window state as
 ;; authoritative: update the flag and recompute work area + bar + view.
+;;
+;; Also handles late-appearing taskbars: a monitor may have had no taskbar at
+;; Manager_init (so taskBarClass is empty) but pick one up later — e.g., user
+;; toggles "show taskbar on all displays" and explorer creates a new
+;; Shell_SecondaryTrayWnd. Probe via Monitor_getWorkArea to populate
+;; taskBarClass before bailing.
 Monitor_syncTaskBarState(m) {
   Global
 
-  If Not Monitor_#%m%_taskBarClass
-    Return
+  Local visible, wasUnknown
+
+  wasUnknown := Not Monitor_#%m%_taskBarClass
+  If wasUnknown {
+    Monitor_getWorkArea(m)        ;; scans Shell_*TrayWnd vs monitor bounds
+    If Not Monitor_#%m%_taskBarClass
+      Return                      ;; still no taskbar on this monitor
+  }
 
   visible := WinExist("ahk_class " Monitor_#%m%_taskBarClass) ? True : False
-  If (visible = Monitor_#%m%_showTaskBar)
+  If (visible = Monitor_#%m%_showTaskBar And Not wasUnknown)
     Return
 
-  Debug_logMessage("DEBUG[1] Monitor_syncTaskBarState: m=" . m . " flag=" . Monitor_#%m%_showTaskBar . " observed=" . visible . " - syncing", 1)
+  Debug_logMessage("DEBUG[1] Monitor_syncTaskBarState: m=" . m . " wasUnknown=" . wasUnknown . " flag=" . Monitor_#%m%_showTaskBar . " observed=" . visible . " - syncing", 1)
   Monitor_#%m%_showTaskBar := visible
-  Monitor_getWorkArea(m)
+  If Not wasUnknown
+    Monitor_getWorkArea(m)        ;; already done above when wasUnknown
   Bar_move(m)
   View_arrange(m, Monitor_#%m%_aView_#1)
 }
