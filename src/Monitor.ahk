@@ -383,6 +383,29 @@ Monitor_toggleTaskBar(m := 0) {
   }
 }
 
+;; Reconciles Monitor_#%m%_showTaskBar with the actual visibility of
+;; Shell_TrayWnd. Windows can show or hide the taskbar without going through
+;; bug.n (e.g., explorer restart, session/display events), leaving the cached
+;; flag stale; the work area then drifts from reality and Win+B takes two
+;; presses to dismiss instead of one. Treat the observed window state as
+;; authoritative: update the flag and recompute work area + bar + view.
+Monitor_syncTaskBarState(m) {
+  Global
+
+  If Not Monitor_#%m%_taskBarClass
+    Return
+
+  visible := WinExist("ahk_class " Monitor_#%m%_taskBarClass) ? True : False
+  If (visible = Monitor_#%m%_showTaskBar)
+    Return
+
+  Debug_logMessage("DEBUG[1] Monitor_syncTaskBarState: m=" . m . " flag=" . Monitor_#%m%_showTaskBar . " observed=" . visible . " - syncing", 1)
+  Monitor_#%m%_showTaskBar := visible
+  Monitor_getWorkArea(m)
+  Bar_move(m)
+  View_arrange(m, Monitor_#%m%_aView_#1)
+}
+
 Monitor_toggleWindowTag(i, d = 0) {
   Local aWndId, wndId
 
