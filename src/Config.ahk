@@ -444,6 +444,9 @@ Config_initDefaultHotkeys()
   Config_setHotkey("#+y",         "Monitor_toggleNotifyIconOverflowWindow()")
   Config_setHotkey("!+y",         "View_traceAreas()")
 
+  ;; Help
+  Config_setHotkey("#s",          "Help_toggle()")
+
   ;; Administration
   Config_setHotkey("#^e",         "Config_edit()")
   Config_setHotkey("#^s",         "Config_UI_saveSession()")

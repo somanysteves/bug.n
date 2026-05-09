@@ -107,6 +107,7 @@ Main_evalCommand(command) {
 #Include %A_ScriptDir%\Bar.ahk
 #Include %A_ScriptDir%\Config.ahk
 #Include %A_ScriptDir%\Debug.ahk
+#Include %A_ScriptDir%\Help.ahk
 #Include %A_ScriptDir%\Manager.ahk
 #Include %A_ScriptDir%\Perf.ahk
 #Include %A_ScriptDir%\Bench_urgent.ahk
