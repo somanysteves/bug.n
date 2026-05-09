@@ -145,6 +145,13 @@ Manager_cleanup()
     Manager_taskBarHook := 0
   }
 
+  ;; Cancel any deferred sync the hook had armed before we unhooked. Without
+  ;; this, an in-flight one-shot timer would fire mid-teardown and
+  ;; Monitor_syncTaskBarState could reflow windows while cleanup is restoring
+  ;; per-monitor state.
+  SetTimer, Manager_taskBarSyncDeferred, Off
+  Manager_taskBarDirty := 0
+
   WinGet, aWndId, ID, A
 
   Manager_restoreWindowBorders()
