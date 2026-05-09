@@ -398,7 +398,7 @@ Monitor_toggleTaskBar(m := 0) {
 Monitor_syncTaskBarState(m) {
   Global
 
-  Local visible, wasUnknown
+  Local prevDetect, visible, wasUnknown
 
   wasUnknown := Not Monitor_#%m%_taskBarClass
   If wasUnknown {
@@ -407,7 +407,12 @@ Monitor_syncTaskBarState(m) {
       Return                      ;; still no taskbar on this monitor
   }
 
+  ;; Force DetectHiddenWindows Off so WinExist's "exists" means "visible"
+  ;; regardless of any thread-local state we inherited.
+  prevDetect := A_DetectHiddenWindows
+  DetectHiddenWindows, Off
   visible := WinExist("ahk_class " Monitor_#%m%_taskBarClass) ? True : False
+  DetectHiddenWindows, %prevDetect%
   If (visible = Monitor_#%m%_showTaskBar And Not wasUnknown)
     Return
 
