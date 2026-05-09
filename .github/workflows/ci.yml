@@ -29,6 +29,31 @@ jobs:
         shell: cmd
         run: test.bat
 
+      - name: Run stress bench (perf scenario)
+        shell: cmd
+        run: build\bugn-bench.exe --windows 8 --iterations 10 --commit %GITHUB_SHA% --out bench\perf-ci.csv
+
+      - name: Run stress bench (urgent scenario)
+        shell: cmd
+        run: build\bugn-bench.exe --scenario urgent --commit %GITHUB_SHA%
+
+      - name: Collect bench log
+        if: always()
+        shell: pwsh
+        run: |
+          $log = Join-Path $env:APPDATA 'bug.n\log.txt'
+          if (Test-Path $log) { Copy-Item $log bench\log.txt }
+
+      - name: Upload bench artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-output
+          path: |
+            bench/perf-ci.csv
+            bench/log.txt
+          if-no-files-found: ignore
+
       - name: Upload bugn.exe artifact
         if: success()
         uses: actions/upload-artifact@v4
