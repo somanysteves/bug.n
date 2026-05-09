@@ -1,3 +1,4 @@
 *.exe
 .claude/settings.local.json
-bench/
+bench/*
+!bench/perf-baseline.csv

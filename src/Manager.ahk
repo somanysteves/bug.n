@@ -52,6 +52,7 @@ Manager_init()
 
   Manager_hideShow         := False
   Manager_validateInProgress := False
+  Manager_taskBarDirty     := 0
   Bar_hideTitleWndIds      := ""
   Manager_allWndIds        := ""
   Manager_managedWndIds    := ""
@@ -66,6 +67,7 @@ Manager_init()
   }
 
   Manager_registerShellHook()
+  Manager_registerTaskBarHook()
   SetTimer, Manager_doMaintenance, %Config_maintenanceInterval%
   SetTimer, Bar_loop, %Config_readinInterval%
 }
@@ -135,6 +137,20 @@ Manager_applyRules(wndId, ByRef isManaged, ByRef m, ByRef tags, ByRef isFloating
 Manager_cleanup()
 {
   Local aWndId, m, ncmSize, ncm, wndIds
+
+  ;; Unhook before WinShow'ing the taskbar below — otherwise our hook would
+  ;; observe its own teardown and schedule a deferred sync mid-cleanup.
+  If Manager_taskBarHook {
+    DllCall("UnhookWinEvent", "Ptr", Manager_taskBarHook)
+    Manager_taskBarHook := 0
+  }
+
+  ;; Cancel any deferred sync the hook had armed before we unhooked. Without
+  ;; this, an in-flight one-shot timer would fire mid-teardown and
+  ;; Monitor_syncTaskBarState could reflow windows while cleanup is restoring
+  ;; per-monitor state.
+  SetTimer, Manager_taskBarSyncDeferred, Off
+  Manager_taskBarDirty := 0
 
   WinGet, aWndId, ID, A
 
@@ -221,6 +237,26 @@ Manager_validateAliveTimer:
   If (Manager_validateAlive() And Config_dynamicTiling)
     View_arrange(Manager_aMonitor, Monitor_#%Manager_aMonitor%_aView_#1)
   Manager_validateInProgress := False
+Return
+
+;; Deferred handler for Manager_onObjectShowOrHide. The hook callback runs on
+;; the AHK message thread, so we keep it fast and bounce the actual sync work
+;; here. Negative timer = one-shot, naturally debouncing bursts of events
+;; (e.g., explorer batching show/hide on a single state change).
+;;
+;; Manager_taskBarDirty is a bitmask of monitors needing sync — populated by
+;; the hook callback after mapping each event's hwnd to its monitor. Read
+;; and clear up-front so any event that fires during the loop re-arms a
+;; fresh timer cycle rather than getting eaten by the clear.
+Manager_taskBarSyncDeferred:
+  Critical Off
+  dirty := Manager_taskBarDirty
+  Manager_taskBarDirty := 0
+  Loop, % Manager_monitorCount {
+    m := A_Index
+    If (dirty & (1 << (m - 1)))
+      Monitor_syncTaskBarState(m)
+  }
 Return
 
 Manager_getWindowInfo() {
@@ -858,9 +894,103 @@ Manager_override(rule = "") {
   Bar_updateView(Manager_aMonitor, Monitor_#%Manager_aMonitor%_aView_#1)
 }
 
+;; Hooks Windows' EVENT_OBJECT_SHOW / EVENT_OBJECT_HIDE so we learn the moment
+;; Shell_TrayWnd's visibility changes — whether bug.n drove the change (Win+B)
+;; or something else did (explorer restart, session/display events, third-party
+;; apps calling SHAppBarMessage). The cached Monitor_#%m%_showTaskBar flag is
+;; reconciled in Manager_onObjectShowOrHide so the work area always reflects
+;; what's actually on screen.
+;;
+;; Filtered to explorer.exe's PID at the kernel level so unrelated system show/
+;; hide events (every popup, menu, tooltip on the box) never reach the AHK
+;; message thread — a global hook is heavy enough to delay HSHELL_WINDOWCREATED
+;; processing during window-spawn bursts (caught the bench failing on it). On
+;; explorer restart the PID changes and the hook stops firing; TaskbarCreated
+;; (broadcast to all top-level windows when explorer (re)starts) lets us
+;; rebuild the hook in Manager_onTaskbarCreated.
+Manager_registerTaskBarHook() {
+  Global Manager_taskBarHook, Manager_taskBarHookCb, Manager_taskBarCreatedMsg
+
+  If Not Manager_taskBarHookCb
+    Manager_taskBarHookCb := RegisterCallback("Manager_onObjectShowOrHide", "F")
+
+  If Not Manager_taskBarCreatedMsg {
+    Manager_taskBarCreatedMsg := DllCall("RegisterWindowMessage", "Str", "TaskbarCreated")
+    OnMessage(Manager_taskBarCreatedMsg, "Manager_onTaskbarCreated")
+  }
+
+  Process, Exist, explorer.exe
+  explorerPid := ErrorLevel
+  If Not explorerPid {
+    Debug_logMessage("DEBUG[1] Manager_registerTaskBarHook: explorer.exe not running; will hook on TaskbarCreated", 1)
+    Manager_taskBarHook := 0
+    Return
+  }
+
+  Manager_taskBarHook := DllCall("SetWinEventHook"
+    , "UInt", 0x8002          ;; EVENT_OBJECT_SHOW
+    , "UInt", 0x8003          ;; EVENT_OBJECT_HIDE
+    , "Ptr",  0               ;; hmodWinEventProc (NULL = out-of-context)
+    , "Ptr",  Manager_taskBarHookCb
+    , "UInt", explorerPid     ;; OS-level filter: only events from explorer.exe
+    , "UInt", 0               ;; idThread (0 = all threads of explorerPid)
+    , "UInt", 0)              ;; WINEVENT_OUTOFCONTEXT
+  Debug_logMessage("DEBUG[1] Manager_registerTaskBarHook: hook=" . Manager_taskBarHook . " explorerPid=" . explorerPid, 1)
+}
+
+;; TaskbarCreated handler: explorer (re)started, so the PID our hook was bound
+;; to is gone (or never existed). Tear down any stale hook and rebuild against
+;; the new explorer process.
+Manager_onTaskbarCreated(wParam, lParam, msg, hwnd) {
+  Global Manager_taskBarHook
+
+  If Manager_taskBarHook {
+    DllCall("UnhookWinEvent", "Ptr", Manager_taskBarHook)
+    Manager_taskBarHook := 0
+  }
+  Manager_registerTaskBarHook()
+}
+
+;; WinEventHook callback. With explorer-PID filtering at the kernel level,
+;; the only events reaching us are explorer's own — but explorer owns plenty
+;; beyond the taskbar (Start menu surface, jump lists, file-explorer windows)
+;; so the class check is still required. Real work bounces to
+;; Manager_taskBarSyncDeferred via a one-shot timer.
+;;
+;; Maps each taskbar event to a single monitor via the hwnd's center point so
+;; the deferred sync only touches the affected monitor (matters for users with
+;; "show taskbar on all displays" — a hide/show on one tray shouldn't reflow
+;; the other).
+Manager_onObjectShowOrHide(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, dwmsEventTime) {
+  Local wndClass, prevDetect, x, y, w, h, m
+
+  ;; Window-level events only — skip controls, menus, accessibility children.
+  If (idObject != 0)
+    Return
+
+  ;; HIDE fires after the window is hidden, so we may need to introspect a
+  ;; hidden window to read its class and position.
+  prevDetect := A_DetectHiddenWindows
+  DetectHiddenWindows, On
+  WinGetClass, wndClass, ahk_id %hwnd%
+  If (wndClass != "Shell_TrayWnd" And wndClass != "Shell_SecondaryTrayWnd") {
+    DetectHiddenWindows, %prevDetect%
+    Return
+  }
+  WinGetPos, x, y, w, h, ahk_id %hwnd%
+  DetectHiddenWindows, %prevDetect%
+
+  m := Monitor_get(x + w / 2, y + h / 2)
+  If (m <= 0)
+    Return
+
+  Manager_taskBarDirty |= (1 << (m - 1))
+  SetTimer, Manager_taskBarSyncDeferred, -50
+}
+
 Manager_registerShellHook() {
   Global Config_monitorDisplayChangeMessages
-  
+
   WM_DISPLAYCHANGE := 126   ;; This message is sent when the display resolution has changed.
   Gui, +LastFound
   hWnd := WinExist()
