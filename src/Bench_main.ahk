@@ -82,6 +82,8 @@ Return          ;; end of the auto-execute section
 Bench_kick:
   If (Bench_scenario = "urgent")
     Bench_runUrgent()
+  Else If (Bench_scenario = "dispatch")
+    Bench_runDispatch(Bench_iterations)
   Else
     Perf_runBench(Bench_windows, Bench_iterations)
 Return
@@ -107,8 +109,10 @@ Main_evalCommand(command) {
 #Include %A_ScriptDir%\Bar.ahk
 #Include %A_ScriptDir%\Config.ahk
 #Include %A_ScriptDir%\Debug.ahk
+#Include %A_ScriptDir%\Help.ahk
 #Include %A_ScriptDir%\Manager.ahk
 #Include %A_ScriptDir%\Perf.ahk
+#Include %A_ScriptDir%\Bench_dispatch.ahk
 #Include %A_ScriptDir%\Bench_urgent.ahk
 #Include %A_ScriptDir%\Manager_setCursor.ahk
 #Include %A_ScriptDir%\Monitor.ahk

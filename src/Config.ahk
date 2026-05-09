@@ -110,6 +110,7 @@ Config_init() {
   Config_monitorDisplayChangeMessages := "ask"    ;; "off" | "on" | "ask"
 
   Config_hotkeyCount := 0
+  Config_initDefaultHotkeys()
   Config_restoreConfig(Config_filePath)
   If (SubStr(A_OSVersion, 1, 3) = "10.") {
     Config_borderWidth    := 0
@@ -284,6 +285,175 @@ Config_redirectHotkey(key)
   }
 }
 
+;; Upsert (key, command) into Config_hotkey_#N_* and bind via AHK.
+;; A subsequent call with the same key replaces the prior command in
+;; place rather than appending a duplicate, so Config.ini overrides a
+;; default cleanly. Empty command tombstones the slot (key+command
+;; both set to "") and unbinds via AHK -- we leave the slot in place
+;; rather than compacting because Config_init resets the count to 0
+;; on every reload, so tombstones never accumulate across runs.
+Config_setHotkey(key, command)
+{
+  Global
+
+  Local existing, i
+
+  existing := 0
+  Loop, % Config_hotkeyCount {
+    i := A_Index
+    If (Config_hotkey_#%i%_key = key) {
+      existing := i
+      Break
+    }
+  }
+
+  If (command = "") {
+    If existing {
+      Hotkey, %key%, Off
+      Config_hotkey_#%existing%_key     := ""
+      Config_hotkey_#%existing%_command := ""
+    }
+    Return
+  }
+
+  If existing {
+    Config_hotkey_#%existing%_command := command
+  } Else {
+    Config_hotkeyCount += 1
+    Config_hotkey_#%Config_hotkeyCount%_key     := key
+    Config_hotkey_#%Config_hotkeyCount%_command := command
+  }
+  Debug_logMessage("  Hotkey: " . key . " -> " . command, 0)
+  Hotkey, %key%, Config_hotkeyLabel
+}
+
+;; Default hotkey bindings. Each entry routes through Config_setHotkey
+;; so it shows up in Config_hotkey_#N_* (visible to Help.ahk's
+;; cheatsheet popup) and is overridable from Config.ini by re-binding
+;; the same key. Order is for readability only -- the popup groups by
+;; command prefix.
+Config_initDefaultHotkeys()
+{
+  ;; Window management
+  Config_setHotkey("#j",          "View_activateWindow(0, +1)")
+  Config_setHotkey("#k",          "View_activateWindow(0, -1)")
+  Config_setHotkey("#+j",         "View_shuffleWindow(0, +1)")
+  Config_setHotkey("#+k",         "View_shuffleWindow(0, -1)")
+  Config_setHotkey("#+Enter",     "View_shuffleWindow(1)")
+  Config_setHotkey("#+c",         "Manager_closeWindow()")
+  Config_setHotkey("#+d",         "Window_toggleDecor()")
+  Config_setHotkey("#+f",         "View_toggleFloatingWindow()")
+  Config_setHotkey("#^m",         "Manager_moveWindow()")
+  Config_setHotkey("#+n",         "Manager_minimizeWindow()")
+  Config_setHotkey("#+s",         "Manager_sizeWindow()")
+  Config_setHotkey("#+m",         "Manager_maximizeWindow()")
+  Config_setHotkey("#i",          "Manager_getWindowInfo()")
+  Config_setHotkey("#+i",         "Manager_getWindowList()")
+  Config_setHotkey("!j",          "View_moveWindow(0, +1)")
+  Config_setHotkey("!k",          "View_moveWindow(0, -1)")
+  Config_setHotkey("!+m",         "Manager_maximizeWindow()")
+  Config_setHotkey("!1",          "View_moveWindow(1)")
+  Config_setHotkey("!2",          "View_moveWindow(2)")
+  Config_setHotkey("!3",          "View_moveWindow(3)")
+  Config_setHotkey("!4",          "View_moveWindow(4)")
+  Config_setHotkey("!5",          "View_moveWindow(5)")
+  Config_setHotkey("!6",          "View_moveWindow(6)")
+  Config_setHotkey("!7",          "View_moveWindow(7)")
+  Config_setHotkey("!8",          "View_moveWindow(8)")
+  Config_setHotkey("!9",          "View_moveWindow(9)")
+  Config_setHotkey("!0",          "View_moveWindow(10)")
+  Config_setHotkey("!BackSpace",  "View_toggleStackArea()")
+
+  ;; Window debugging
+  Config_setHotkey("#^i",         "Debug_logViewWindowList()")
+  Config_setHotkey("#^+i",        "Debug_logManagedWindowList()")
+  Config_setHotkey("#^+h",        "Debug_logHelp()")
+  Config_setHotkey("#^d",         "Debug_setLogLevel(0, -1)")
+  Config_setHotkey("#^+d",        "Debug_setLogLevel(0, +1)")
+
+  ;; Layout management
+  Config_setHotkey("#Tab",        "View_setLayout(-1)")
+  Config_setHotkey("#f",          "View_setLayout(3)")
+  Config_setHotkey("#m",          "View_setLayout(2)")
+  Config_setHotkey("#t",          "View_setLayout(1)")
+  Config_setHotkey("#+h",         "View_setLayoutProperty(MY, 0, +1)")
+  Config_setHotkey("#+;",         "View_setLayoutProperty(MY, 0, -1)")
+  Config_setHotkey("#^h",         "View_setLayoutProperty(StackMX, 0, +1)")
+  Config_setHotkey("#^;",         "View_setLayoutProperty(StackMX, 0, -1)")
+  Config_setHotkey("#h",          "View_setLayoutProperty(MFactor, 0, -0.05)")
+  Config_setHotkey("#;",          "View_setLayoutProperty(MFactor, 0, +0.05)")
+  Config_setHotkey("#^t",         "View_setLayoutProperty(Axis, 0, +1, 1)")
+  Config_setHotkey("#^Enter",     "View_setLayoutProperty(Axis, 0, +2, 1)")
+  Config_setHotkey("#^Tab",       "View_setLayoutProperty(Axis, 0, +1, 2)")
+  Config_setHotkey("#^+Tab",      "View_setLayoutProperty(Axis, 0, +1, 3)")
+  Config_setHotkey("#^Up",        "View_setLayoutProperty(MY, 0, +1)")
+  Config_setHotkey("#^Down",      "View_setLayoutProperty(MY, 0, -1)")
+  Config_setHotkey("#^Right",     "View_setLayoutProperty(MX, 0, +1)")
+  Config_setHotkey("#^Left",      "View_setLayoutProperty(MX, 0, -1)")
+  Config_setHotkey("#+Left",      "View_setLayoutProperty(GapWidth, 0, -2)")
+  Config_setHotkey("#+Right",     "View_setLayoutProperty(GapWidth, 0, +2)")
+  Config_setHotkey("#+r",         "View_resetTileLayout()")
+
+  ;; View/Tag management
+  Config_setHotkey("#BackSpace",  "Monitor_activateView(-1)")
+  Config_setHotkey("#+0",         "Monitor_setWindowTag(10)")
+  Config_setHotkey("#1",          "Monitor_activateView(1)")
+  Config_setHotkey("#+1",         "Monitor_setWindowTag(1)")
+  Config_setHotkey("#^1",         "Monitor_toggleWindowTag(1)")
+  Config_setHotkey("#2",          "Monitor_activateView(2)")
+  Config_setHotkey("#+2",         "Monitor_setWindowTag(2)")
+  Config_setHotkey("#^2",         "Monitor_toggleWindowTag(2)")
+  Config_setHotkey("#3",          "Monitor_activateView(3)")
+  Config_setHotkey("#+3",         "Monitor_setWindowTag(3)")
+  Config_setHotkey("#^3",         "Monitor_toggleWindowTag(3)")
+  Config_setHotkey("#4",          "Monitor_activateView(4)")
+  Config_setHotkey("#+4",         "Monitor_setWindowTag(4)")
+  Config_setHotkey("#^4",         "Monitor_toggleWindowTag(4)")
+  Config_setHotkey("#5",          "Monitor_activateView(5)")
+  Config_setHotkey("#+5",         "Monitor_setWindowTag(5)")
+  Config_setHotkey("#^5",         "Monitor_toggleWindowTag(5)")
+  Config_setHotkey("#6",          "Monitor_activateView(6)")
+  Config_setHotkey("#+6",         "Monitor_setWindowTag(6)")
+  Config_setHotkey("#^6",         "Monitor_toggleWindowTag(6)")
+  Config_setHotkey("#7",          "Monitor_activateView(7)")
+  Config_setHotkey("#+7",         "Monitor_setWindowTag(7)")
+  Config_setHotkey("#^7",         "Monitor_toggleWindowTag(7)")
+  Config_setHotkey("#8",          "Monitor_activateView(8)")
+  Config_setHotkey("#+8",         "Monitor_setWindowTag(8)")
+  Config_setHotkey("#^8",         "Monitor_toggleWindowTag(8)")
+  Config_setHotkey("#9",          "Monitor_activateView(9)")
+  Config_setHotkey("#+9",         "Monitor_setWindowTag(9)")
+  Config_setHotkey("#^9",         "Monitor_toggleWindowTag(9)")
+  Config_setHotkey("~WheelUp",    "Manager_activateViewByMouse(-1)")
+  Config_setHotkey("~WheelDown",  "Manager_activateViewByMouse(+1)")
+  Config_setHotkey("#u",          "Manager_activateUrgentView()")
+
+  ;; Monitor management
+  Config_setHotkey("#.",          "Manager_activateMonitor(0, +1)")
+  Config_setHotkey("#,",          "Manager_activateMonitor(0, -1)")
+  Config_setHotkey("#+.",         "Manager_setWindowMonitor(0, +1)")
+  Config_setHotkey("#+,",         "Manager_setWindowMonitor(0, -1)")
+  Config_setHotkey("#^+.",        "Manager_setViewMonitor(0, +1)")
+  Config_setHotkey("#^+,",        "Manager_setViewMonitor(0, -1)")
+
+  ;; GUI management
+  Config_setHotkey("#^b",         "Monitor_toggleBar()")
+  Config_setHotkey("#b",          "Monitor_toggleTaskBar()")
+  Config_setHotkey("#Return",     "Run, alacritty")
+  Config_setHotkey("#y",          "Bar_toggleCommandGui()")
+  Config_setHotkey("#+y",         "Monitor_toggleNotifyIconOverflowWindow()")
+  Config_setHotkey("!+y",         "View_traceAreas()")
+
+  ;; Help
+  Config_setHotkey("#s",          "Help_toggle()")
+
+  ;; Administration
+  Config_setHotkey("#^e",         "Config_edit()")
+  Config_setHotkey("#^s",         "Config_UI_saveSession()")
+  Config_setHotkey("#^r",         "Reload")
+  Config_setHotkey("#+q",         "ExitApp")
+}
+
 Config_restoreConfig(filename)
 {
   Local cmd, i, key, type, val, var
@@ -305,16 +475,7 @@ Config_restoreConfig(filename)
         i := InStr(val, "::")
         key := SubStr(val, 1, i - 1)
         cmd := SubStr(val, i + 2)
-        If Not cmd
-          Hotkey, %key%, Off
-        Else
-        {
-          Debug_logMessage("  Hotkey: " . key . " -> " . cmd, 0)
-          Config_hotkeyCount += 1
-          Config_hotkey_#%Config_hotkeyCount%_key := key
-          Config_hotkey_#%Config_hotkeyCount%_command := cmd
-          Hotkey, %key%, Config_hotkeyLabel
-        }
+        Config_setHotkey(key, cmd)
       }
       Else If (type = "Config_rule")
       {
@@ -419,120 +580,8 @@ Config_UI_saveSession() {
 
 #MaxHotkeysPerInterval 200
 
-;; Key definitions
-;; Window management
-#j::View_activateWindow(0, +1)
-#k::View_activateWindow(0, -1)
-#+j::View_shuffleWindow(0, +1)
-#+k::View_shuffleWindow(0, -1)
-;; TODO
-#+Enter::View_shuffleWindow(1)
-#+c::Manager_closeWindow()
-#+d::Window_toggleDecor()
-#+f::View_toggleFloatingWindow()
-#^m::Manager_moveWindow()
-#+n::Manager_minimizeWindow()
-#+s::Manager_sizeWindow()
-#+m::Manager_maximizeWindow()
-#i::Manager_getWindowInfo()
-#+i::Manager_getWindowList()
-!j::View_moveWindow(0, +1)
-!k::View_moveWindow(0, -1)
-!+m::Manager_maximizeWindow()
-!1::View_moveWindow(1)
-!2::View_moveWindow(2)
-!3::View_moveWindow(3)
-!4::View_moveWindow(4)
-!5::View_moveWindow(5)
-!6::View_moveWindow(6)
-!7::View_moveWindow(7)
-!8::View_moveWindow(8)
-!9::View_moveWindow(9)
-!0::View_moveWindow(10)
-!BackSpace::View_toggleStackArea()
-
-;; Window debugging
-#^i::Debug_logViewWindowList()
-#^+i::Debug_logManagedWindowList()
-#^+h::Debug_logHelp()
-#^d::Debug_setLogLevel(0, -1)
-#^+d::Debug_setLogLevel(0, +1)
-
-;; Layout management
-#Tab::View_setLayout(-1)
-#f::View_setLayout(3)
-#m::View_setLayout(2)
-#t::View_setLayout(1)
-#+h::View_setLayoutProperty("MY", 0, +1)
-#+;::View_setLayoutProperty("MY", 0, -1)
-#^h::View_setLayoutProperty("StackMX", 0, +1)
-#^;::View_setLayoutProperty("StackMX", 0, -1)
-#h::View_setLayoutProperty("MFactor", 0, -0.05)
-#;::View_setLayoutProperty("MFactor", 0, +0.05)
-#^t::View_setLayoutProperty("Axis", 0, +1, 1)
-#^Enter::View_setLayoutProperty("Axis", 0, +2, 1)
-#^Tab::View_setLayoutProperty("Axis", 0, +1, 2)
-#^+Tab::View_setLayoutProperty("Axis", 0, +1, 3)
-#^Up::View_setLayoutProperty("MY", 0, +1)
-#^Down::View_setLayoutProperty("MY", 0, -1)
-#^Right::View_setLayoutProperty("MX", 0, +1)
-#^Left::View_setLayoutProperty("MX", 0, -1)
-#+Left::View_setLayoutProperty("GapWidth", 0, -2)
-#+Right::View_setLayoutProperty("GapWidth", 0, +2)
-#+r::View_resetTileLayout()
-
-;; View/Tag management
-#BackSpace::Monitor_activateView(-1)
-#+0::Monitor_setWindowTag(10)
-#1::Monitor_activateView(1)
-#+1::Monitor_setWindowTag(1)
-#^1::Monitor_toggleWindowTag(1)
-#2::Monitor_activateView(2)
-#+2::Monitor_setWindowTag(2)
-#^2::Monitor_toggleWindowTag(2)
-#3::Monitor_activateView(3)
-#+3::Monitor_setWindowTag(3)
-#^3::Monitor_toggleWindowTag(3)
-#4::Monitor_activateView(4)
-#+4::Monitor_setWindowTag(4)
-#^4::Monitor_toggleWindowTag(4)
-#5::Monitor_activateView(5)
-#+5::Monitor_setWindowTag(5)
-#^5::Monitor_toggleWindowTag(5)
-#6::Monitor_activateView(6)
-#+6::Monitor_setWindowTag(6)
-#^6::Monitor_toggleWindowTag(6)
-#7::Monitor_activateView(7)
-#+7::Monitor_setWindowTag(7)
-#^7::Monitor_toggleWindowTag(7)
-#8::Monitor_activateView(8)
-#+8::Monitor_setWindowTag(8)
-#^8::Monitor_toggleWindowTag(8)
-#9::Monitor_activateView(9)
-#+9::Monitor_setWindowTag(9)
-#^9::Monitor_toggleWindowTag(9)
-~WheelUp::Manager_activateViewByMouse(-1)
-~WheelDown::Manager_activateViewByMouse(+1)
-#u::Manager_activateUrgentView()
-
-;; Monitor management
-#.::Manager_activateMonitor(0, +1)
-#,::Manager_activateMonitor(0, -1)
-#+.::Manager_setWindowMonitor(0, +1)
-#+,::Manager_setWindowMonitor(0, -1)
-#^+.::Manager_setViewMonitor(0, +1)
-#^+,::Manager_setViewMonitor(0, -1)
-
-;; GUI management
-#^b::Monitor_toggleBar()
-#b::Monitor_toggleTaskBar()
-#Return::Run, alacritty
-#y::Bar_toggleCommandGui()
-#+y::Monitor_toggleNotifyIconOverflowWindow()
-!+y::View_traceAreas()
-
-;; Administration
-#^e::Config_edit()
-#^s::Config_UI_saveSession()
-#^r::Reload
-#+q::ExitApp
+;; Default hotkey bindings live in Config_initDefaultHotkeys() rather
+;; than as static `#k::Func()` directives. Routing every default
+;; through Config_setHotkey() lets the cheatsheet popup (Help.ahk)
+;; enumerate them at runtime via Config_hotkey_#N_* and lets a user's
+;; Config.ini cleanly override a default by re-using the same key.

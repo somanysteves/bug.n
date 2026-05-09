@@ -465,6 +465,22 @@ Toggle the overflow window of the 'notify icons'.
 
 Indicate the areas of the "tile" layout.
 
+### Help
+
+`Config_hotkey=#s::Help_toggle()`
+
+Toggle the in-app hotkey cheatsheet popup.
+
+> The popup lists every binding from `Config.ini` grouped by command
+prefix (`View`, `Manager`, `Monitor`, etc.) and centers itself on the
+active monitor. Dismiss with `Esc`, by pressing the toggle again, or
+by clicking outside the popup.
+
+> While bug.n is running, this binding shadows the Windows `Win`+`S`
+search-bar shortcut. Press `Esc` to dismiss the cheatsheet, or pick a
+different key (e.g. `#/`) if you want to keep Windows search on
+`Win`+`S`.
+
 ### Administration
 
 `Config_hotkey=#^e::Run, edit <Config_filePath>`

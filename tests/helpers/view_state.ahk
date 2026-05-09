@@ -63,7 +63,11 @@ ViewState_parseShuffleBinding(keyCombo, ByRef i, ByRef d) {
   FileRead, contents, %configPath%
   ;; Escape AHK hotkey modifiers (+, !, ^) for regex. `#` isn't special.
   escapedKey := RegExReplace(keyCombo, "([\+\!\^])", "\$1")
-  pattern := "Om)^" . escapedKey . "::View_shuffleWindow\(\s*(.+?)\s*,\s*(.+?)\s*\)"
+  ;; Defaults moved from static `<key>::Func()` directives to
+  ;; Config_setHotkey("<key>", "Func(args)") rows. Match the args
+  ;; out of the new form so this test stays coupled to the binding
+  ;; layer (per the J-wrap regression rationale above).
+  pattern := "Om)Config_setHotkey\(""" . escapedKey . """\s*,\s*""View_shuffleWindow\(\s*(.+?)\s*,\s*(.+?)\s*\)""\)"
   If Not RegExMatch(contents, pattern, m) {
     i := ""
     d := ""
