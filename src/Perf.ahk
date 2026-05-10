@@ -275,6 +275,32 @@ Perf_runBench(windowCount, iterations) {
     StringReplace, dummy, spawnedWndIds, `;, `;, UseErrorLevel All
     spawnedDiffCount := ErrorLevel
     Debug_logMessage("DEBUG[0] Perf_runBench: timed out waiting for " . windowCount . " windows to register (spawned-diff = " . spawnedDiffCount . ", all-seen count = " . allCount . ")", 0)
+    Debug_logMessage("DEBUG[0] Perf_runBench: spawnedPids=" . spawnedPids, 0)
+    Debug_logMessage("DEBUG[0] Perf_runBench: spawnedWndIds (managed) =" . spawnedWndIds, 0)
+    Debug_logMessage("DEBUG[0] Perf_runBench: Manager_allWndIds=" . Manager_allWndIds, 0)
+    StringTrimRight, pidsTrim, spawnedPids, 1
+    Loop, PARSE, pidsTrim, `;
+    {
+      If A_LoopField {
+        WinGet, hwndForPid, ID, ahk_pid %A_LoopField%
+        ;; Numeric compare — Manager_managedWndIds / Manager_allWndIds may
+        ;; hold HWNDs in hex or decimal depending on SetFormat state at
+        ;; insert time (see Manager_isManaged comment). InStr would
+        ;; falsely report 'no' on a format mismatch.
+        inManaged := Manager_isManaged(hwndForPid) ? "yes" : "no"
+        inAll := "no"
+        StringTrimRight, allTrimmed, Manager_allWndIds, 1
+        target := hwndForPid + 0
+        Loop, PARSE, allTrimmed, `;
+        {
+          If A_LoopField And ((A_LoopField + 0) = target) {
+            inAll := "yes"
+            Break
+          }
+        }
+        Debug_logMessage("DEBUG[0] Perf_runBench: PID=" . A_LoopField . " HWND=" . hwndForPid . " managed=" . inManaged . " seen=" . inAll, 0)
+      }
+    }
     Perf_cleanup(spawnedWndIds, spawnedPids, originalView)
     ExitApp, 2
   }

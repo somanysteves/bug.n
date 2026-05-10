@@ -53,6 +53,12 @@ Manager_init()
   Manager_hideShow         := False
   Manager_validateInProgress := False
   Manager_taskBarDirty     := 0
+  Manager_pausedForBench   := False
+  Manager_pausedForBenchSkipped := 0
+  ;; Default for production; bench overrides to True in Bench_main.ahk
+  ;; auto-execute (which runs before App_init -> Manager_init).
+  If (Manager_isBench = "")
+    Manager_isBench := False
   Bar_hideTitleWndIds      := ""
   Manager_allWndIds        := ""
   Manager_managedWndIds    := ""
@@ -67,6 +73,7 @@ Manager_init()
   }
 
   Manager_registerShellHook()
+  Manager_registerWindowCreateHook()
   Manager_registerTaskBarHook()
   SetTimer, Manager_doMaintenance, %Config_maintenanceInterval%
   SetTimer, Bar_loop, %Config_readinInterval%
@@ -144,6 +151,11 @@ Manager_cleanup()
     DllCall("UnhookWinEvent", "Ptr", Manager_taskBarHook)
     Manager_taskBarHook := 0
   }
+  If Manager_winCreateHook {
+    DllCall("UnhookWinEvent", "Ptr", Manager_winCreateHook)
+    Manager_winCreateHook := 0
+  }
+  SetTimer, Manager_winCreateDeferred, Off
 
   ;; Cancel any deferred sync the hook had armed before we unhooked. Without
   ;; this, an in-flight one-shot timer would fire mid-teardown and
@@ -257,6 +269,15 @@ Manager_taskBarSyncDeferred:
     If (dirty & (1 << (m - 1)))
       Monitor_syncTaskBarState(m)
   }
+Return
+
+;; Deferred handler for Manager_onWindowCreate (#19). Per-burst Manager_sync
+;; instead of per-event Manager_manage — sync's enumeration is idempotent
+;; on Manager_managedWndIds so duplicate adopts are no-ops.
+Manager_winCreateDeferred:
+  Critical Off
+  winCreateSyncDummy := ""
+  Manager_sync(winCreateSyncDummy)
 Return
 
 Manager_getWindowInfo() {
@@ -658,7 +679,7 @@ Return
     title change: 6 or 32774
 */
 Manager_onShellMessage(wParam, lParam) {
-  Local a, isChanged, aWndClass, aWndHeight, aWndId, aWndTitle, aWndWidth, aWndX, aWndY, i, m, managedKey, t, wndClass, wndId, wndId0, wndIds, wndIsDesktop, wndIsHidden, wndTitle, x, y
+  Local a, isChanged, aWndClass, aWndHeight, aWndId, aWndTitle, aWndWidth, aWndX, aWndY, benchHandle, i, m, managedKey, t, wndClass, wndId, wndId0, wndIds, wndIsDesktop, wndIsHidden, wndTitle, x, y
   ;; HSHELL_* become global.
 
   ;; MESSAGE NAME AND         ... NUMBER    COMMENTS, POSSIBLE EVENTS
@@ -762,6 +783,25 @@ Manager_onShellMessage(wParam, lParam) {
   If (wParam = 1 Or wParam = 2 Or wParam = 4 Or wParam = 6 Or wParam = 32772) And lParam And Not Manager_hideShow
   {
     Perf_start("Manager_onShellMessage")
+    ;; Skip while bugn-bench.exe is running (#19). Don't self-pause if we ARE the bench.
+    If (Not Manager_isBench) {
+      benchHandle := DllCall("OpenMutex", "UInt", 0x00100000, "Int", 0, "Str", "Local\bug.n-bench-active", "Ptr")
+      If benchHandle {
+        DllCall("CloseHandle", "Ptr", benchHandle)
+        If Not Manager_pausedForBench {
+          Debug_logMessage("DEBUG[0] Manager: pausing for bench (#19)", 0)
+          Manager_pausedForBench := True
+          Manager_pausedForBenchSkipped := 0
+        }
+        Manager_pausedForBenchSkipped += 1
+        Perf_end("Manager_onShellMessage")
+        Return
+      }
+      If Manager_pausedForBench {
+        Debug_logMessage("DEBUG[0] Manager: resuming after bench (skipped " . Manager_pausedForBenchSkipped . " events)", 0)
+        Manager_pausedForBench := False
+      }
+    }
     ;; Process shell events immediately. The previous Sleep,
     ;; %Config_shellMsgDelay% here was a workaround for transient popups
     ;; (issue #83 — Total Commander's TDLG2FILEACTIONMIN flashes during
@@ -1004,6 +1044,55 @@ Manager_registerShellHook() {
     OnMessage(WM_DISPLAYCHANGE, "Manager_onDisplayChange")
 }
 ;; SKAN: How to Hook on to Shell to receive its messages? (http://www.autohotkey.com/forum/viewtopic.php?p=123323#123323)
+
+;; EVENT_OBJECT_CREATE backstop for HSHELL_WINDOWCREATED that the legacy
+;; RegisterShellHookWindow drops under load (#19). Global hook (no PID filter)
+;; — see Manager_registerTaskBarHook for the load-on-message-thread caveat.
+;; The bench is the gate: if pass rate worsens with this hook installed, the
+;; volume is too high and we should reconsider.
+Manager_registerWindowCreateHook() {
+  Global Manager_winCreateHook, Manager_winCreateHookCb
+
+  If Not Manager_winCreateHookCb
+    Manager_winCreateHookCb := RegisterCallback("Manager_onWindowCreate", "F")
+
+  Manager_winCreateHook := DllCall("SetWinEventHook"
+    , "UInt", 0x8000          ;; EVENT_OBJECT_CREATE
+    , "UInt", 0x8000
+    , "Ptr",  0               ;; hmodWinEventProc (NULL = out-of-context)
+    , "Ptr",  Manager_winCreateHookCb
+    , "UInt", 0               ;; idProcess (0 = all processes)
+    , "UInt", 0               ;; idThread (0 = all threads)
+    , "UInt", 2)              ;; WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS
+  Debug_logMessage("DEBUG[1] Manager_registerWindowCreateHook: hook=" . Manager_winCreateHook, 1)
+}
+
+;; WinEventHook callback. Filter cheaply, defer real work via SetTimer to
+;; avoid Manager_manage on the message-thread hot path. Mirrors the mutex
+;; gate in Manager_onShellMessage so production doesn't manage bench
+;; windows during a coexistence-mutex window.
+Manager_onWindowCreate(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, dwmsEventTime) {
+  Global Manager_isBench
+  ;; Window-level events only — skip controls, menus, accessibility children.
+  If (idObject != 0 Or idChild != 0)
+    Return
+  ;; Skip non-top-level windows. GA_ROOT == 2.
+  If (DllCall("GetAncestor", "Ptr", hwnd, "UInt", 2, "Ptr") != hwnd)
+    Return
+  ;; Coexistence with bugn-bench.exe (#19), same gate as Manager_onShellMessage.
+  ;; Without `Global Manager_isBench` above, AHK's RegisterCallback bridge
+  ;; doesn't expose super-globals — empty read would short-circuit the bench
+  ;; on its own mutex. Confirmed empirically before adding the declaration.
+  If (Not Manager_isBench) {
+    benchHandle := DllCall("OpenMutex", "UInt", 0x00100000, "Int", 0, "Str", "Local\bug.n-bench-active", "Ptr")
+    If benchHandle {
+      DllCall("CloseHandle", "Ptr", benchHandle)
+      Return
+    }
+  }
+  ;; Defer; bursts coalesce, re-entrancy avoided. Negative interval = one-shot.
+  SetTimer, Manager_winCreateDeferred, -50
+}
 
 Manager_resetMonitorConfiguration() {
   Local GuiN, hWnd, i, j, m, mPrimary, wndClass, wndIds, wndTitle
