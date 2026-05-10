@@ -437,20 +437,35 @@ Perf_runBench(windowCount, iterations) {
   ;; rather than WinExist: on Win11, AHK's window enumeration can fail to
   ;; surface a hidden Shell_TrayWnd by class even with DetectHiddenWindows
   ;; On (apparent Win11+AHK quirk specific to that system window), while
-  ;; user32!FindWindow finds it reliably. Skipped only when no taskbar
-  ;; exists at all (e.g., explorer's taskbar component not running).
+  ;; user32!FindWindow finds it reliably. Verify the tray's center lies
+  ;; within aMonitor's bounds before claiming the class — matches
+  ;; Monitor_getWorkArea's pattern (Monitor.ahk:184–193) and avoids
+  ;; mis-binding to a tray on a different display when "show taskbar on
+  ;; all displays" is on. Skipped when no candidate falls on aMonitor.
   If Not Monitor_#%aMonitor%_taskBarClass {
-    trayHwnd := DllCall("FindWindow", "Str", "Shell_TrayWnd", "Ptr", 0, "Ptr")
-    If trayHwnd {
-      Monitor_#%aMonitor%_taskBarClass := "Shell_TrayWnd"
-    } Else {
-      trayHwnd := DllCall("FindWindow", "Str", "Shell_SecondaryTrayWnd", "Ptr", 0, "Ptr")
-      If trayHwnd
-        Monitor_#%aMonitor%_taskBarClass := "Shell_SecondaryTrayWnd"
+    SysGet, monBounds, Monitor, %aMonitor%
+    prevDetect := A_DetectHiddenWindows
+    DetectHiddenWindows, On
+    candidates := "Shell_TrayWnd,Shell_SecondaryTrayWnd"
+    Loop, PARSE, candidates, `,
+    {
+      candClass := A_LoopField
+      trayHwnd  := DllCall("FindWindow", "Str", candClass, "Ptr", 0, "Ptr")
+      If trayHwnd {
+        WinGetPos, tbX, tbY, tbW, tbH, ahk_id %trayHwnd%
+        cx := tbX + tbW / 2
+        cy := tbY + tbH / 2
+        If (cx >= monBoundsLeft And cx <= monBoundsRight
+            And cy >= monBoundsTop And cy <= monBoundsBottom) {
+          Monitor_#%aMonitor%_taskBarClass := candClass
+          Break
+        }
+      }
     }
+    DetectHiddenWindows, %prevDetect%
   }
   If Not Monitor_#%aMonitor%_taskBarClass {
-    Debug_logMessage("DEBUG[0] Perf_runBench: taskbar_toggle skipped — no Shell_TrayWnd or Shell_SecondaryTrayWnd found (explorer not running?)", 0)
+    Debug_logMessage("DEBUG[0] Perf_runBench: taskbar_toggle skipped — no Shell_TrayWnd or Shell_SecondaryTrayWnd on monitor " . aMonitor . " (FindWindow result, if any, fell outside its bounds)", 0)
   } Else {
     Perf_resetSamples()
     Loop, % iterations {
