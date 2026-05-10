@@ -679,7 +679,7 @@ Return
     title change: 6 or 32774
 */
 Manager_onShellMessage(wParam, lParam) {
-  Local a, isChanged, aWndClass, aWndHeight, aWndId, aWndTitle, aWndWidth, aWndX, aWndY, i, m, managedKey, t, wndClass, wndId, wndId0, wndIds, wndIsDesktop, wndIsHidden, wndTitle, x, y
+  Local a, isChanged, aWndClass, aWndHeight, aWndId, aWndTitle, aWndWidth, aWndX, aWndY, benchHandle, i, m, managedKey, t, wndClass, wndId, wndId0, wndIds, wndIsDesktop, wndIsHidden, wndTitle, x, y
   ;; HSHELL_* become global.
 
   ;; MESSAGE NAME AND         ... NUMBER    COMMENTS, POSSIBLE EVENTS

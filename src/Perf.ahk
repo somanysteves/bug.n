@@ -283,8 +283,21 @@ Perf_runBench(windowCount, iterations) {
     {
       If A_LoopField {
         WinGet, hwndForPid, ID, ahk_pid %A_LoopField%
-        inManaged := InStr(Manager_managedWndIds, hwndForPid . ";") ? "yes" : "no"
-        inAll := InStr(Manager_allWndIds, hwndForPid . ";") ? "yes" : "no"
+        ;; Numeric compare — Manager_managedWndIds / Manager_allWndIds may
+        ;; hold HWNDs in hex or decimal depending on SetFormat state at
+        ;; insert time (see Manager_isManaged comment). InStr would
+        ;; falsely report 'no' on a format mismatch.
+        inManaged := Manager_isManaged(hwndForPid) ? "yes" : "no"
+        inAll := "no"
+        StringTrimRight, allTrimmed, Manager_allWndIds, 1
+        target := hwndForPid + 0
+        Loop, PARSE, allTrimmed, `;
+        {
+          If A_LoopField And ((A_LoopField + 0) = target) {
+            inAll := "yes"
+            Break
+          }
+        }
         Debug_logMessage("DEBUG[0] Perf_runBench: PID=" . A_LoopField . " HWND=" . hwndForPid . " managed=" . inManaged . " seen=" . inAll, 0)
       }
     }
