@@ -281,6 +281,7 @@ View_setLayout(i, d = 0) {
 View_setLayoutProperty(name, i, d, opt = 0) {
   Local a, l, v
 
+  Perf_start("View_setLayoutProperty")
   a := False
   v := Monitor_#%Manager_aMonitor%_aView_#1
   l := View_#%Manager_aMonitor%_#%v%_layout_#1
@@ -305,6 +306,7 @@ View_setLayoutProperty(name, i, d, opt = 0) {
 
   If a
     View_arrange(Manager_aMonitor, v)
+  Perf_end("View_setLayoutProperty")
 }
 
 View_shuffleWindow(i, d = 0, aWndId = "") {

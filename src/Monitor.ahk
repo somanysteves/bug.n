@@ -174,6 +174,7 @@ Monitor_getWorkArea(m) {
   Local monitor, monitorBottom, monitorLeft, monitorRight, monitorTop
   Local wndClasses, wndHeight, wndId, wndWidth, wndX, wndY
 
+  Perf_start("Monitor_getWorkArea")
   SysGet, monitor, Monitor, %m%
   Debug_logMessage("DEBUG[0] Monitor_getWorkArea: #" . m . ", l: " . monitorLeft . ", r: " . monitorRight . ", t: " . monitorTop . ", b: " . monitorBottom . ".", 0)
 
@@ -240,6 +241,7 @@ Monitor_getWorkArea(m) {
   Monitor_#%m%_barY   := bTop
 
   Monitor_setWorkArea(monitorLeft, monitorTop, monitorRight, monitorBottom)
+  Perf_end("Monitor_getWorkArea")
 }
 
 Monitor_moveToIndex(m, n) {
@@ -365,6 +367,7 @@ Monitor_toggleNotifyIconOverflowWindow() {
 Monitor_toggleTaskBar(m := 0) {
   Global
 
+  Perf_start("Monitor_toggleTaskBar")
   m := m ? m : Manager_aMonitor
   If Monitor_#%m%_taskBarClass {
     Monitor_#%m%_showTaskBar := Not Monitor_#%m%_showTaskBar
@@ -381,6 +384,7 @@ Monitor_toggleTaskBar(m := 0) {
     Bar_move(m)
     View_arrange(m, Monitor_#%m%_aView_#1)
   }
+  Perf_end("Monitor_toggleTaskBar")
 }
 
 ;; Reconciles Monitor_#%m%_showTaskBar with the actual visibility of

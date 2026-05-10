@@ -357,8 +357,35 @@ Perf_runBench(windowCount, iterations) {
   Sleep, 300
   Perf_spawnWindows(windowCount, secondPids)
   If Not Perf_waitForManagedDelta(preSecondManaged, windowCount, 10000) {
-    Debug_logMessage("DEBUG[0] Perf_runBench: timed out waiting for second-batch spawn to register on view " . switchTarget, 0)
+    Global Manager_allWndIds
+    StringReplace, dummy, Manager_allWndIds, `;, `;, UseErrorLevel All
+    allCount := ErrorLevel
     secondWndIds := Perf_diffWndIds(preSecondManaged, Manager_managedWndIds)
+    StringReplace, dummy, secondWndIds, `;, `;, UseErrorLevel All
+    secondDiffCount := ErrorLevel
+    Debug_logMessage("DEBUG[0] Perf_runBench: timed out waiting for second-batch spawn to register on view " . switchTarget . " (second-diff = " . secondDiffCount . ", all-seen count = " . allCount . ")", 0)
+    Debug_logMessage("DEBUG[0] Perf_runBench: secondPids=" . secondPids, 0)
+    Debug_logMessage("DEBUG[0] Perf_runBench: secondWndIds (managed) =" . secondWndIds, 0)
+    Debug_logMessage("DEBUG[0] Perf_runBench: Manager_allWndIds=" . Manager_allWndIds, 0)
+    StringTrimRight, pidsTrim, secondPids, 1
+    Loop, PARSE, pidsTrim, `;
+    {
+      If A_LoopField {
+        WinGet, hwndForPid, ID, ahk_pid %A_LoopField%
+        inManaged := Manager_isManaged(hwndForPid) ? "yes" : "no"
+        inAll := "no"
+        StringTrimRight, allTrimmed, Manager_allWndIds, 1
+        target := hwndForPid + 0
+        Loop, PARSE, allTrimmed, `;
+        {
+          If A_LoopField And ((A_LoopField + 0) = target) {
+            inAll := "yes"
+            Break
+          }
+        }
+        Debug_logMessage("DEBUG[0] Perf_runBench: PID=" . A_LoopField . " HWND=" . hwndForPid . " managed=" . inManaged . " seen=" . inAll, 0)
+      }
+    }
     Perf_cleanup(spawnedWndIds . secondWndIds, spawnedPids . secondPids, originalView)
     ExitApp, 2
   }
@@ -374,7 +401,67 @@ Perf_runBench(windowCount, iterations) {
   Perf_writeRow("view_switch_populated", populatedCount, "Monitor_activateView,Monitor_activateView_hide,Monitor_activateView_show,View_arrange,Tiler_stackTiles,Bar_updateView,Manager_winActivate")
   Sleep, 300
 
-  ;; Scenario 5: orphan_storm — kill half the spawned cmds out-of-band
+  ;; Scenario 5: layout_restructure — Win+H/; (MFactor), Shift+Win+H/;
+  ;; (MY), and Ctrl+Win+H/; (StackMX) all flow through View_setLayoutProperty
+  ;; and trigger an arrange. Active view here is switchTarget (last
+  ;; activated by view_switch_populated) with windowCount cmds. Each
+  ;; pair oscillates +/- so values stay in range — MFactor within
+  ;; (0,1), MY/StackMX within Tiler_setMY/Tiler_setStackMX's 1..9. The
+  ;; six labels blend into a single View_setLayoutProperty row; the
+  ;; three Tiler_set* helpers are sub-ms so the cost is dominated by
+  ;; the shared View_arrange + Tiler_stackTiles path.
+  Perf_resetSamples()
+  Loop, % iterations {
+    View_setLayoutProperty("MFactor", 0, +0.05)
+    View_setLayoutProperty("MFactor", 0, -0.05)
+    View_setLayoutProperty("MY", 0, +1)
+    View_setLayoutProperty("MY", 0, -1)
+    View_setLayoutProperty("StackMX", 0, +1)
+    View_setLayoutProperty("StackMX", 0, -1)
+  }
+  Perf_writeRow("layout_restructure", populatedCount, "View_setLayoutProperty,View_arrange,Tiler_stackTiles")
+  Sleep, 300
+
+  ;; Scenario 6: taskbar_toggle — Win+B (Monitor_toggleTaskBar) hides/shows
+  ;; the real Windows taskbar, recomputes work area, repositions the bug.n
+  ;; bar, and re-arranges the active view. Different cost shape than the
+  ;; other arranges: the work area itself changes, so this measures
+  ;; WinHide/WinShow on a system-managed window plus the reflow path. Paired
+  ;; toggles per iteration so the OS taskbar ends in the state it started.
+  ;;
+  ;; Setup: bug.n's default Config_showTaskBar=False means production bug.n
+  ;; typically has the taskbar hidden by the time the bench starts. Bench's
+  ;; Monitor_getWorkArea uses default DetectHiddenWindows Off so its probe
+  ;; misses a hidden Shell_TrayWnd, leaving Monitor_taskBarClass empty and
+  ;; making Monitor_toggleTaskBar a no-op. Probe via DllCall FindWindow
+  ;; rather than WinExist: on Win11, AHK's window enumeration can fail to
+  ;; surface a hidden Shell_TrayWnd by class even with DetectHiddenWindows
+  ;; On (apparent Win11+AHK quirk specific to that system window), while
+  ;; user32!FindWindow finds it reliably. Skipped only when no taskbar
+  ;; exists at all (e.g., explorer's taskbar component not running).
+  If Not Monitor_#%aMonitor%_taskBarClass {
+    trayHwnd := DllCall("FindWindow", "Str", "Shell_TrayWnd", "Ptr", 0, "Ptr")
+    If trayHwnd {
+      Monitor_#%aMonitor%_taskBarClass := "Shell_TrayWnd"
+    } Else {
+      trayHwnd := DllCall("FindWindow", "Str", "Shell_SecondaryTrayWnd", "Ptr", 0, "Ptr")
+      If trayHwnd
+        Monitor_#%aMonitor%_taskBarClass := "Shell_SecondaryTrayWnd"
+    }
+  }
+  If Not Monitor_#%aMonitor%_taskBarClass {
+    Debug_logMessage("DEBUG[0] Perf_runBench: taskbar_toggle skipped — no Shell_TrayWnd or Shell_SecondaryTrayWnd found (explorer not running?)", 0)
+  } Else {
+    Perf_resetSamples()
+    Loop, % iterations {
+      Monitor_toggleTaskBar()
+      Monitor_toggleTaskBar()
+    }
+    Perf_writeRow("taskbar_toggle", populatedCount, "Monitor_toggleTaskBar,Monitor_getWorkArea,Bar_move,View_arrange,Tiler_stackTiles")
+    Sleep, 300
+  }
+
+  ;; Scenario 7: orphan_storm — kill half the spawned cmds out-of-band
   ;; via Process,Close (simulating a missed WINDOWDESTROYED event) and
   ;; verify Manager_validateAlive prunes them. The first call detects
   ;; and prunes the orphans (longer); subsequent calls find nothing to

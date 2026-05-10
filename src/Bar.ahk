@@ -333,11 +333,13 @@ Bar_move(m)
 {
   Local wndTitle, x, y
 
+  Perf_start("Bar_move")
   x := Monitor_#%m%_barX
   y := Monitor_#%m%_barY
 
   wndTitle := "bug.n_BAR_" m
   WinMove, %wndTitle%, , %x%, %y%
+  Perf_end("Bar_move")
 }
 
 Bar_toggleCommandGui() {
