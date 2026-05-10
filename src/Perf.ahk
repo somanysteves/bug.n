@@ -275,6 +275,19 @@ Perf_runBench(windowCount, iterations) {
     StringReplace, dummy, spawnedWndIds, `;, `;, UseErrorLevel All
     spawnedDiffCount := ErrorLevel
     Debug_logMessage("DEBUG[0] Perf_runBench: timed out waiting for " . windowCount . " windows to register (spawned-diff = " . spawnedDiffCount . ", all-seen count = " . allCount . ")", 0)
+    Debug_logMessage("DEBUG[0] Perf_runBench: spawnedPids=" . spawnedPids, 0)
+    Debug_logMessage("DEBUG[0] Perf_runBench: spawnedWndIds (managed) =" . spawnedWndIds, 0)
+    Debug_logMessage("DEBUG[0] Perf_runBench: Manager_allWndIds=" . Manager_allWndIds, 0)
+    StringTrimRight, pidsTrim, spawnedPids, 1
+    Loop, PARSE, pidsTrim, `;
+    {
+      If A_LoopField {
+        WinGet, hwndForPid, ID, ahk_pid %A_LoopField%
+        inManaged := InStr(Manager_managedWndIds, hwndForPid . ";") ? "yes" : "no"
+        inAll := InStr(Manager_allWndIds, hwndForPid . ";") ? "yes" : "no"
+        Debug_logMessage("DEBUG[0] Perf_runBench: PID=" . A_LoopField . " HWND=" . hwndForPid . " managed=" . inManaged . " seen=" . inAll, 0)
+      }
+    }
     Perf_cleanup(spawnedWndIds, spawnedPids, originalView)
     ExitApp, 2
   }

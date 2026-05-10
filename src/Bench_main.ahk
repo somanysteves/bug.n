@@ -69,6 +69,12 @@ SetWinDelay, 10
   If (Bench_out = "")
     Bench_out := A_ScriptDir . "\..\bench\perf.csv"
 
+  ;; Coexistence with running bugn.exe (#19). Name must match Manager.ahk.
+  Manager_isBench := True
+  Bench_mutexHandle := DllCall("CreateMutex", "Ptr", 0, "Int", 0, "Str", "Local\bug.n-bench-active", "Ptr")
+  If (Not Bench_mutexHandle)
+    Debug_logMessage("WARN: Bench could not create coexistence mutex; production bug.n won't pause", 0)
+
   App_init()
 
   SplitPath, Bench_out, , Bench_outDir
@@ -94,6 +100,10 @@ Bench_cleanup:
   ;; layout would clobber the user's saved session on disk.
   Manager_cleanup()
   ResourceMonitor_cleanup()
+  If Bench_mutexHandle {
+    DllCall("CloseHandle", "Ptr", Bench_mutexHandle)
+    Bench_mutexHandle := 0
+  }
   Debug_logMessage("====== Exiting bug.n-bench ======", 0)
 ExitApp
 
