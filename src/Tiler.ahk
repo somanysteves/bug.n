@@ -9,8 +9,6 @@
 
   @license GNU General Public License version 3
            ../LICENSE.md or <http://www.gnu.org/licenses/>
-
-  @version 9.2.0
 */
 
 Tiler_addSubArea(m, v, i, areaX, areaY, areaW, areaH) {

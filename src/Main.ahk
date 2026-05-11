@@ -9,12 +9,10 @@
 
   @license GNU General Public License version 3
            ../LICENSE.md or <http://www.gnu.org/licenses/>
-
-  @version 9.2.0
 */
 
 NAME    := "bug.n"
-VERSION := "9.2.0"
+#Include %A_ScriptDir%\Version.ahk
 
 ;; Script settings
 OnExit, Main_cleanup

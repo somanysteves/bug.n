@@ -3,7 +3,6 @@
   Copyright (c) 2010-2019 Joshua Fuhs, joten
 
   @license GNU General Public License version 3
-  @version 9.2.0
 
   App.ahk -- shared scaffolding for bug.n entry points (Main.ahk and
   Bench_main.ahk). Holds the filesystem helpers and the standard init

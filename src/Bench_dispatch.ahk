@@ -3,7 +3,6 @@
   Copyright (c) 2010-2019 Joshua Fuhs, joten
 
   @license GNU General Public License version 3
-  @version 9.2.0
 
   Bench_dispatch.ahk -- microbench for the per-keypress hotkey
   dispatch path (Config_redirectHotkey). Refactor B routed the
