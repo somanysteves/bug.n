@@ -10,8 +10,6 @@
   @license GNU General Public License version 3
            ../LICENSE.md or <http://www.gnu.org/licenses/>
 
-  @version 9.3.0
-
   Help.ahk -- in-app hotkey cheatsheet popup. Reads the bindings
   registered by Config_restoreConfig (Config_hotkey_#N_key /
   Config_hotkey_#N_command) and renders them grouped by command

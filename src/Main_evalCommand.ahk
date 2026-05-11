@@ -3,7 +3,6 @@
   Copyright (c) 2010-2019 Joshua Fuhs, joten
 
   @license GNU General Public License version 3
-  @version 9.3.0
 
   Main_evalCommand.ahk -- dispatcher for Config-defined hotkey commands
   and Bar click handlers. Lives in its own file so Bench_main.ahk can

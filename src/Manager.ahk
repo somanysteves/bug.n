@@ -9,8 +9,6 @@
 
   @license GNU General Public License version 3
            ../LICENSE.md or <http://www.gnu.org/licenses/>
-
-  @version 9.3.0
 */
 
 Manager_init()
