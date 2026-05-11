@@ -553,7 +553,7 @@ Bar_updateView(m, v) {
   newBar := View_#%m%_#%v%_showBar
   If Not (newBar = Monitor_#%m%_showBar) {
     Monitor_#%m%_showBar := View_#%m%_#%v%_showBar
-    Monitor_updateBar(Manager_aMonitor, v)
+    Monitor_updateBar(m, v)
   }
 
   GuiN := (m - 1) + 1
@@ -593,7 +593,7 @@ Bar_updateViewPair(m, oldV, newV) {
   newBar := View_#%m%_#%newV%_showBar
   If Not (newBar = Monitor_#%m%_showBar) {
     Monitor_#%m%_showBar := View_#%m%_#%newV%_showBar
-    Monitor_updateBar(Manager_aMonitor, newV)
+    Monitor_updateBar(m, newV)
   }
 
   GuiN := (m - 1) + 1
