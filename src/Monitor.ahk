@@ -63,9 +63,11 @@ Monitor_activateView(i, d = 0) {
 
   aView := Monitor_#%aMonitor%_aView_#1
 
+  Perf_start("Monitor_activateView_saveCtx")
   WinGet, aWndId, ID, A
   If WinExist("ahk_id" aWndId) And InStr(View_#%aMonitor%_#%aView%_wndIds, aWndId ";") And Window_isProg(aWndId)
     View_setActiveWindow(aMonitor, aView, aWndId)
+  Perf_end("Monitor_activateView_saveCtx")
 
   n := Config_syncMonitorViews
   If (n = 1)
@@ -82,6 +84,7 @@ Monitor_activateView(i, d = 0) {
     ;; having seen whatever was flashing, so the bar should stop lighting up red.
     ;; Runs per-monitor so syncMonitorViews clears every monitor that is being
     ;; pulled onto view i, not just aMonitor.
+    Perf_start("Monitor_activateView_urgency")
     If View_#%m%_#%i%_isUrgent {
       View_#%m%_#%i%_isUrgent := False
       StringTrimRight, wndIds, View_#%m%_#%i%_wndIds, 1
@@ -91,6 +94,7 @@ Monitor_activateView(i, d = 0) {
           Window_#%A_LoopField%_isUrgent := False
       }
     }
+    Perf_end("Monitor_activateView_urgency")
 
     Monitor_#%m%_aView_#2 := aView
     Monitor_#%m%_aView_#1 := i
@@ -105,11 +109,13 @@ Monitor_activateView(i, d = 0) {
     }
     Perf_end("Monitor_activateView_hide")
     SetWinDelay, 10
+    Perf_start("Monitor_activateView_aotOn")
     detectHidden := A_DetectHiddenWindows
     DetectHiddenWindows, On
     wndId := View_getActiveWindow(m, i)
     If wndId
       Window_set(wndId, "AlwaysOnTop", "On")
+    Perf_end("Monitor_activateView_aotOn")
     View_arrange(m, i)
     DetectHiddenWindows, %detectHidden%
     StringTrimRight, wndIds, View_#%m%_#%i%_wndIds, 1
@@ -120,21 +126,24 @@ Monitor_activateView(i, d = 0) {
       Window_showAsync(A_LoopField)
     }
     Perf_end("Monitor_activateView_show")
+    Perf_start("Monitor_activateView_aotOff")
     If wndId
       Window_set(wndId, "AlwaysOnTop", "Off")
     SetWinDelay, 10
     Manager_hideShow := False
+    Perf_end("Monitor_activateView_aotOff")
 
-    Bar_updateView(m, aView)
-    Bar_updateView(m, i)
+    Bar_updateViewPair(m, aView, i)
   }
 
+  Perf_start("Monitor_activateView_finalShow")
   wndId := View_getActiveWindow(aMonitor, i)
   ;; Pre-show via SW_SHOWNA so WinActivate has a visible target. Skip if
   ;; hung — ShowWindow can block, and Manager_winActivate would no-op on
   ;; a hung target anyway (Window_activate's Window_isHung guard).
   If wndId And Not Window_isHung(wndId)
     DllCall("ShowWindow", "Ptr", wndId, "Int", 8)
+  Perf_end("Monitor_activateView_finalShow")
   Manager_winActivate(wndId)
   Perf_end("Monitor_activateView")
 }

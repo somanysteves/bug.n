@@ -9,7 +9,7 @@ SetBatchLines, -1
 TEST_PASS_COUNT := 0
 TEST_FAIL_COUNT := 0
 
-Yunit.Use(CIReporter).Test(TestTiler, TestManagerLoop, TestViewShuffleWindow, TestManagerDisplayChange, TestManagerUrgentView, TestConfigUrgentPalette, TestManagerSync, TestHelp)
+Yunit.Use(CIReporter).Test(TestTiler, TestManagerLoop, TestViewShuffleWindow, TestManagerDisplayChange, TestManagerUrgentView, TestConfigUrgentPalette, TestManagerSync, TestHelp, TestBarSetViewHighlight)
 
 total := TEST_PASS_COUNT + TEST_FAIL_COUNT
 FileAppend, % "`n--- " . TEST_PASS_COUNT . " passed, " . TEST_FAIL_COUNT . " failed (" . total . " total) ---`n", *
@@ -56,3 +56,4 @@ ExitApp, % TEST_FAIL_COUNT
 #Include %A_ScriptDir%\test_Config_urgentPalette.ahk
 #Include %A_ScriptDir%\test_Manager_sync.ahk
 #Include %A_ScriptDir%\test_Help.ahk
+#Include %A_ScriptDir%\test_Bar_setViewHighlight.ahk
