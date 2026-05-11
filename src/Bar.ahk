@@ -498,6 +498,51 @@ Bar_updateTitle() {
   Bar_aWndId := aWndId
 }
 
+;; Pure resolver: pick the (back, fore, font) color triple for view v on
+;; monitor m based on its status (active / urgent / idle). Sets the three
+;; ByRef outputs; no GuiControl side effects, so tests can assert on the
+;; outputs without setting up a real Gui.
+;;
+;; `Global` (assume-global) is load-bearing: AHK v1's default assume-local
+;; mode resolves static-name reads (Config_backColor_#2_#1 etc.) as
+;; locals in functions with no Local declaration, leaving the outputs
+;; empty and rendering the active view as a black square (regression
+;; observed 2026-05-10). tests/test_Bar_setViewHighlight.ahk locks
+;; this in by exercising each branch and asserting on the resolved
+;; back-color value.
+Bar_resolveViewHighlight(m, v, ByRef backColor, ByRef foreColor, ByRef fontColor) {
+  Global
+
+  If (v = Monitor_#%m%_aView_#1) {
+    ;; Active view on this monitor.
+    backColor := Config_backColor_#2_#1
+    foreColor := Config_foreColor_#2_#1
+    fontColor := Config_fontColor_#2_#1
+  } Else If View_#%m%_#%v%_isUrgent {
+    ;; Urgent view: a managed window on this view is flashing/awaiting attention.
+    backColor := Config_backColor_#3_#1
+    foreColor := Config_foreColor_#3_#1
+    fontColor := Config_fontColor_#3_#1
+  } Else {
+    ;; Idle view.
+    backColor := Config_backColor_#1_#1
+    foreColor := Config_foreColor_#1_#1
+    fontColor := Config_fontColor_#1_#1
+  }
+}
+
+;; Apply the highlight color for view v on monitor m via GuiControl. Three
+;; control updates: the highlight Progress's background + foreground, plus
+;; the view-name Text's font color. Shared by Bar_updateView and
+;; Bar_updateViewPair.
+Bar_setViewHighlight(m, v) {
+  Local backColor, foreColor, fontColor
+
+  Bar_resolveViewHighlight(m, v, backColor, foreColor, fontColor)
+  GuiControl, +Background%backColor% +c%foreColor%, Bar_#%m%_view_#%v%_highlighted
+  GuiControl, +c%fontColor%, Bar_#%m%_view_#%v%
+}
+
 Bar_updateView(m, v) {
   Local managedWndId0, wndId0, wndIds, newBar
 
@@ -508,7 +553,7 @@ Bar_updateView(m, v) {
   newBar := View_#%m%_#%v%_showBar
   If Not (newBar = Monitor_#%m%_showBar) {
     Monitor_#%m%_showBar := View_#%m%_#%v%_showBar
-    Monitor_updateBar(Manager_aMonitor, v)
+    Monitor_updateBar(m, v)
   }
 
   GuiN := (m - 1) + 1
@@ -518,19 +563,7 @@ Bar_updateView(m, v) {
   StringTrimRight, wndIds, Manager_managedWndIds, 1
   StringSplit, managedWndId, wndIds, `;
 
-  If (v = Monitor_#%m%_aView_#1) {
-    ;; Set foreground/background colors if the view is the current view.
-    GuiControl, +Background%Config_backColor_#2_#1% +c%Config_foreColor_#2_#1%, Bar_#%m%_view_#%v%_highlighted
-    GuiControl, +c%Config_fontColor_#2_#1%, Bar_#%m%_view_#%v%
-  } Else If View_#%m%_#%v%_isUrgent {
-    ;; Urgent view: a managed window on this view is flashing/awaiting attention.
-    GuiControl, +Background%Config_backColor_#3_#1% +c%Config_foreColor_#3_#1%, Bar_#%m%_view_#%v%_highlighted
-    GuiControl, +c%Config_fontColor_#3_#1%, Bar_#%m%_view_#%v%
-  } Else {
-    ;; Set foreground/background colors.
-    GuiControl, +Background%Config_backColor_#1_#1% +c%Config_foreColor_#1_#1%, Bar_#%m%_view_#%v%_highlighted
-    GuiControl, +c%Config_fontColor_#1_#1%, Bar_#%m%_view_#%v%
-  }
+  Bar_setViewHighlight(m, v)
 
   Loop, % Config_viewCount {
     StringTrimRight, wndIds, View_#%m%_#%A_Index%_wndIds, 1
@@ -539,4 +572,44 @@ Bar_updateView(m, v) {
     GuiControl, , Bar_#%m%_view_#%A_Index%, % Config_viewNames_#%A_Index%                 ;; Refresh the number on the bar.
   }
   Perf_end("Bar_updateView")
+}
+
+;; View-switch fast path: combines the two Bar_updateView(m, oldV) +
+;; Bar_updateView(m, newV) calls Monitor_activateView used to do back-to-
+;; back. Repaints highlight colors for both views (oldV going inactive,
+;; newV becoming active) but runs the per-view percentage/name loop
+;; only once instead of twice. Cuts ~18 GuiControl calls per view switch.
+;;
+;; showBar tracks newV alone: if oldV.showBar != newV.showBar the old
+;; back-to-back pattern produced a hide-then-show flicker; following
+;; newV avoids that.
+Bar_updateViewPair(m, oldV, newV) {
+  Local managedWndId0, wndId0, wndIds, newBar
+
+  If Not Bar_initialized
+    Return
+
+  Perf_start("Bar_updateViewPair")
+  newBar := View_#%m%_#%newV%_showBar
+  If Not (newBar = Monitor_#%m%_showBar) {
+    Monitor_#%m%_showBar := View_#%m%_#%newV%_showBar
+    Monitor_updateBar(m, newV)
+  }
+
+  GuiN := (m - 1) + 1
+  Gui, %GuiN%: Default
+
+  StringTrimRight, wndIds, Manager_managedWndIds, 1
+  StringSplit, managedWndId, wndIds, `;
+
+  Bar_setViewHighlight(m, oldV)
+  Bar_setViewHighlight(m, newV)
+
+  Loop, % Config_viewCount {
+    StringTrimRight, wndIds, View_#%m%_#%A_Index%_wndIds, 1
+    StringSplit, wndId, wndIds, `;
+    GuiControl, , Bar_#%m%_view_#%A_Index%_highlighted, % wndId0 / managedWndId0 * 100
+    GuiControl, , Bar_#%m%_view_#%A_Index%, % Config_viewNames_#%A_Index%
+  }
+  Perf_end("Bar_updateViewPair")
 }

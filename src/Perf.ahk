@@ -320,7 +320,7 @@ Perf_runBench(windowCount, iterations) {
     Monitor_activateView(switchTarget)
     Monitor_activateView(benchView)
   }
-  Perf_writeRow("view_switch", finalCount, "Monitor_activateView,View_arrange")
+  Perf_writeRow("view_switch", finalCount, "Monitor_activateView,Monitor_activateView_saveCtx,Monitor_activateView_aotOn,Monitor_activateView_aotOff,Monitor_activateView_finalShow,View_arrange,Bar_updateViewPair")
   Sleep, 300
 
   ;; Scenario 2: forced re-tile of the active view
@@ -398,7 +398,7 @@ Perf_runBench(windowCount, iterations) {
     Monitor_activateView(benchView)
     Monitor_activateView(switchTarget)
   }
-  Perf_writeRow("view_switch_populated", populatedCount, "Monitor_activateView,Monitor_activateView_hide,Monitor_activateView_show,View_arrange,Tiler_stackTiles,Bar_updateView,Manager_winActivate")
+  Perf_writeRow("view_switch_populated", populatedCount, "Monitor_activateView,Monitor_activateView_saveCtx,Monitor_activateView_hide,Monitor_activateView_aotOn,Monitor_activateView_aotOff,Monitor_activateView_show,Monitor_activateView_finalShow,View_arrange,Tiler_stackTiles,Bar_updateViewPair,Manager_winActivate")
   Sleep, 300
 
   ;; Scenario 5: layout_restructure — Win+H/; (MFactor), Shift+Win+H/;
