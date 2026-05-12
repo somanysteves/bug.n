@@ -13,13 +13,24 @@
 */
 
 Perf_init(enabled, csvPath, commit) {
-  Global Perf_enabled, Perf_csvPath, Perf_commit, Perf_starts, Perf_samples
+  Global Perf_enabled, Perf_csvPath, Perf_commit, Perf_starts, Perf_samples, Perf_qpcFrequency
 
   Perf_enabled := enabled
   Perf_csvPath := csvPath
   Perf_commit  := commit
   Perf_starts  := {}
   Perf_samples := {}
+
+  ;; QueryPerformanceCounter for sub-millisecond timing. A_TickCount has
+  ;; ~15.6 ms resolution on Windows (one system clock tick), which is far
+  ;; too coarse for the sub-tick operations we measure (e.g. a
+  ;; Manager_onShellMessage call on a responsive window takes ~1-2 ms).
+  ;; Frequency is "counts per second" and is constant for the life of the
+  ;; process, so we cache it once here. CSV column names (min_ms etc.)
+  ;; keep their ms denomination but now carry fractional precision.
+  freq := 0
+  DllCall("QueryPerformanceFrequency", "Int64*", freq)
+  Perf_qpcFrequency := freq
 }
 
 Perf_start(label) {
@@ -27,20 +38,26 @@ Perf_start(label) {
 
   If Not Perf_enabled
     Return
-  Perf_starts[label] := A_TickCount
+  now := 0
+  DllCall("QueryPerformanceCounter", "Int64*", now)
+  Perf_starts[label] := now
 }
 
 Perf_end(label) {
-  Global Perf_enabled, Perf_starts, Perf_samples
+  Global Perf_enabled, Perf_starts, Perf_samples, Perf_qpcFrequency
 
   If Not Perf_enabled
     Return
   If Not Perf_starts.HasKey(label)
     Return
-  delta := A_TickCount - Perf_starts[label]
+  now := 0
+  DllCall("QueryPerformanceCounter", "Int64*", now)
+  ;; counts → ms (float). Multiply before divide so we don't truncate
+  ;; sub-millisecond intervals to zero.
+  deltaMs := (now - Perf_starts[label]) * 1000.0 / Perf_qpcFrequency
   If Not Perf_samples.HasKey(label)
     Perf_samples[label] := []
-  Perf_samples[label].Push(delta)
+  Perf_samples[label].Push(deltaMs)
 }
 
 Perf_resetSamples() {

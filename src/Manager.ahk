@@ -707,6 +707,15 @@ Manager_onShellMessage(wParam, lParam) {
 
   Debug_logMessage("DEBUG[2] Manager_onShellMessage( wParam: " . wParam . ", lParam: " . lParam . " )", 2)
 
+  ;; Full-handler timing. The existing "Manager_onShellMessage" label starts
+  ;; later (after the early-returns) and measures only the dispatch phase;
+  ;; "_full" wraps the entire function so Perf samples reflect every code
+  ;; path, including HSHELL_FLASH urgent dispatch and the hidden-window
+  ;; early-return. If a new early-return is added below, it must be
+  ;; preceded by Perf_end("Manager_onShellMessage_full") to avoid leaking
+  ;; an unclosed sample.
+  Perf_start("Manager_onShellMessage_full")
+
   ;; Urgent-view dispatch must run before the hidden-window early-return:
   ;; bug.n SW_HIDEs every window that is on a non-active view, and those
   ;; are exactly the windows whose flashes we want to surface as red bar
@@ -729,6 +738,7 @@ Manager_onShellMessage(wParam, lParam) {
     managedKey := Manager_isManaged(lParam)
     If managedKey {
       Manager_markUrgent(managedKey)
+      Perf_end("Manager_onShellMessage_full")
       Return
     }
   }
@@ -739,6 +749,7 @@ Manager_onShellMessage(wParam, lParam) {
     ;;   The problem was, that i. a. claws-mail triggers Manager_sync, but the application window
     ;;   would not be ready for being managed, i. e. class and title were not available. Therefore more
     ;;   attempts were needed.
+    Perf_end("Manager_onShellMessage_full")
     Return
   }
 
@@ -793,6 +804,7 @@ Manager_onShellMessage(wParam, lParam) {
         }
         Manager_pausedForBenchSkipped += 1
         Perf_end("Manager_onShellMessage")
+        Perf_end("Manager_onShellMessage_full")
         Return
       }
       If Manager_pausedForBench {
@@ -914,6 +926,7 @@ Manager_onShellMessage(wParam, lParam) {
     ;; process, etc.). The timer label has a single-runner guard.
     SetTimer, Manager_validateAliveTimer, -200
   }
+  Perf_end("Manager_onShellMessage_full")
 }
 
 Manager_override(rule = "") {
