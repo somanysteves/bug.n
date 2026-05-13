@@ -249,6 +249,12 @@ Manager_validateAliveTimer:
   Manager_validateInProgress := False
 Return
 
+;; Debounce target for Bar_updateTitle. See Manager_barTitleAction.
+Manager_barTitleDeferred:
+  Critical Off
+  Bar_updateTitle()
+Return
+
 ;; Deferred handler for Manager_onObjectShowOrHide. The hook callback runs on
 ;; the AHK message thread, so we keep it fast and bounce the actual sync work
 ;; here. Negative timer = one-shot, naturally debouncing bursts of events
@@ -706,7 +712,7 @@ Manager_barTitleAction(wParam, lParam, activeWndId) {
 }
 
 Manager_onShellMessage(wParam, lParam) {
-  Local a, isChanged, aWndClass, aWndHeight, aWndId, aWndTitle, aWndWidth, aWndX, aWndY, benchHandle, i, m, managedKey, t, wndClass, wndId, wndId0, wndIds, wndIsDesktop, wndIsHidden, wndTitle, x, y
+  Local a, action, isChanged, aWndClass, aWndHeight, aWndId, aWndTitle, aWndWidth, aWndX, aWndY, benchHandle, i, m, managedKey, t, wndClass, wndId, wndId0, wndIds, wndIsDesktop, wndIsHidden, wndTitle, x, y
   ;; HSHELL_* become global.
 
   ;; MESSAGE NAME AND         ... NUMBER    COMMENTS, POSSIBLE EVENTS
@@ -943,7 +949,12 @@ Manager_onShellMessage(wParam, lParam) {
       }
       Bar_updateStatus()
     }
-    Bar_updateTitle()
+    WinGet, aWndId, ID, A
+    action := Manager_barTitleAction(wParam, lParam, aWndId)
+    If (action = "immediate")
+      Bar_updateTitle()
+    Else If (action = "defer")
+      SetTimer, Manager_barTitleDeferred, -50
     Perf_end("Manager_onShellMessage")
 
     ;; Defer orphan validation off the shell-event hot path. Using a
