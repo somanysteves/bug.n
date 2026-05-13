@@ -676,6 +676,35 @@ Return
     focus change: 4 or 32772
     title change: 6 or 32774
 */
+
+;; Decides what Manager_onShellMessage should do with Bar_updateTitle at
+;; end-of-handler for a given shell event. Pure so it's Yunit-testable;
+;; the actual side-effect dispatch (immediate call vs. SetTimer vs. no-
+;; op) lives in Manager_onShellMessage.
+;;
+;; Returns:
+;;   "immediate" - call Bar_updateTitle() now. Default for non-REDRAW
+;;                 events where the active window may have changed
+;;                 (create / destroy / activate / rude-app-activate).
+;;   "defer"     - arm a short one-shot timer. HSHELL_REDRAW on the
+;;                 currently active window means its title changed;
+;;                 deferring debounces a burst (e.g. browser streaming
+;;                 a response) into a single bar update after the burst
+;;                 settles, instead of redrawing per chunk.
+;;   "skip"      - do nothing. HSHELL_REDRAW on a background window
+;;                 doesn't change the bar's content (the bar shows the
+;;                 *active* window's title), so the update would be
+;;                 pure waste. This is the largest single win on the
+;;                 streaming-background-window workload.
+Manager_barTitleAction(wParam, lParam, activeWndId) {
+  ;; HSHELL_REDRAW = 6.
+  If (wParam != 6)
+    Return "immediate"
+  If (lParam = activeWndId)
+    Return "defer"
+  Return "skip"
+}
+
 Manager_onShellMessage(wParam, lParam) {
   Local a, isChanged, aWndClass, aWndHeight, aWndId, aWndTitle, aWndWidth, aWndX, aWndY, benchHandle, i, m, managedKey, t, wndClass, wndId, wndId0, wndIds, wndIsDesktop, wndIsHidden, wndTitle, x, y
   ;; HSHELL_* become global.
