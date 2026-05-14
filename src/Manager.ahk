@@ -793,17 +793,19 @@ Manager_onShellMessage(wParam, lParam) {
     WinGetClass, wndClass, A
     WinGetTitle, wndTitle, A
   }
-  WinGet, aWndId, ID, A
-  WinGetClass, aWndClass, ahk_id %aWndId%
-  WinGetTitle, aWndTitle, ahk_id %aWndId%
-  If ((wParam = 4 Or wParam = 32772) And (aWndClass = "WorkerW" And aWndTitle = "" Or lParam = 0 And aWndClass = "Progman" And aWndTitle = "Program Manager"))
-  {
-    MouseGetPos, x, y
-    m := Monitor_get(x, y)
-    ;; The current position of the mouse cursor defines the active monitor, if the desktop has been activated.
-    If m
-      Manager_aMonitor := m
-    Bar_updateTitle()
+  If (wParam = 4 Or wParam = 32772) {
+    WinGet, aWndId, ID, A
+    WinGetClass, aWndClass, ahk_id %aWndId%
+    WinGetTitle, aWndTitle, ahk_id %aWndId%
+    If (aWndClass = "WorkerW" And aWndTitle = "" Or lParam = 0 And aWndClass = "Progman" And aWndTitle = "Program Manager")
+    {
+      MouseGetPos, x, y
+      m := Monitor_get(x, y)
+      ;; The current position of the mouse cursor defines the active monitor, if the desktop has been activated.
+      If m
+        Manager_aMonitor := m
+      Bar_updateTitle()
+    }
   }
 
   ;; This was previously inactive due to `HSHELL_WINDOWREPLACED` not being defined in this function.
