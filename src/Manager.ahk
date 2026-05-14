@@ -951,9 +951,10 @@ Manager_onShellMessage(wParam, lParam) {
     }
     WinGet, aWndId, ID, A
     action := Manager_barTitleAction(wParam, lParam, aWndId)
-    If (action = "immediate")
+    If (action = "immediate") {
+      SetTimer, Manager_barTitleDeferred, Off
       Bar_updateTitle()
-    Else If (action = "defer")
+    } Else If (action = "defer")
       SetTimer, Manager_barTitleDeferred, -50
     Perf_end("Manager_onShellMessage")
 
