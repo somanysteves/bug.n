@@ -28,6 +28,10 @@ Perf_init(enabled, csvPath, commit) {
   ;; Frequency is "counts per second" and is constant for the life of the
   ;; process, so we cache it once here. CSV column names (min_ms etc.)
   ;; keep their ms denomination but now carry fractional precision.
+  ;;
+  ;; No error check on the DllCall: per MSDN, QueryPerformanceFrequency
+  ;; on Windows XP+ "will always succeed and will thus never return zero"
+  ;; (https://learn.microsoft.com/en-us/windows/win32/api/profileapi/nf-profileapi-queryperformancefrequency).
   freq := 0
   DllCall("QueryPerformanceFrequency", "Int64*", freq)
   Perf_qpcFrequency := freq
