@@ -949,8 +949,12 @@ Manager_onShellMessage(wParam, lParam) {
       }
       Bar_updateStatus()
     }
-    WinGet, aWndId, ID, A
-    action := Manager_barTitleAction(wParam, lParam, aWndId)
+    If (wParam = HSHELL_REDRAW) {
+      WinGet, aWndId, ID, A
+      action := Manager_barTitleAction(wParam, lParam, aWndId)
+    } Else {
+      action := "immediate"
+    }
     If (action = "immediate") {
       SetTimer, Manager_barTitleDeferred, Off
       Bar_updateTitle()
