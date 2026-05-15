@@ -189,6 +189,25 @@ Window_isHung(wndId) {
   Return DllCall("IsHungAppWindow", "Ptr", wndId, "Int")
 }
 
+;; Non-blocking title fetch: SendMessageTimeout with SMTO_ABORTIFHUNG and a
+;; 200 ms cap. AHK's WinGetTitle (GetWindowText -> SendMessage, no timeout)
+;; can stall the AHK thread for seconds when the target window's proc is
+;; slow to service WM_GETTEXT -- the pathology behind keyboard hangs when
+;; clicking into Edge/Slack under load. Returns "" on timeout, hung window,
+;; or null HWND.
+Window_getTitleNonBlocking(wndId) {
+  Local title, result
+  If Not wndId
+    Return ""
+  VarSetCapacity(title, 1024)
+  result := DllCall("SendMessageTimeout", "Ptr", wndId, "UInt", 0x000D
+      , "UPtr", 511, "Ptr", &title, "UInt", 0x0002, "UInt", 200, "UPtr*", 0)
+  If Not result
+    Return ""
+  VarSetCapacity(title, -1)
+  Return title
+}
+
 Window_isNotVisible(wndId) {
   WS_VISIBLE = 0x10000000
   WinGet, wndStyle, Style, ahk_id %wndId%

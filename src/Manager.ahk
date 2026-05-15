@@ -113,7 +113,7 @@ Manager_applyRules(wndId, ByRef isManaged, ByRef m, ByRef tags, ByRef isFloating
   action      := ""
 
   WinGetClass, wndClass, ahk_id %wndId%
-  WinGetTitle, wndTitle, ahk_id %wndId%
+  wndTitle := Window_getTitleNonBlocking(wndId)
   If (wndClass Or wndTitle) {
     Loop, % Config_ruleCount {
       ;; The rules are traversed in reverse order.

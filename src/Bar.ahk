@@ -465,7 +465,7 @@ Bar_updateTitle() {
     Return
 
   WinGet, aWndId, ID, A
-  WinGetTitle, aWndTitle, ahk_id %aWndId%
+  aWndTitle := Window_getTitleNonBlocking(aWndId)
   If InStr(Bar_hideTitleWndIds, aWndId ";") Or (aWndTitle = "bug.n_BAR_0")
     aWndTitle := ""
   If aWndId And InStr(Manager_managedWndIds, aWndId . ";") And Window_#%aWndId%_isFloating
