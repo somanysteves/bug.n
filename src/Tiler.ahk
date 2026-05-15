@@ -381,6 +381,7 @@ Tiler_stackTiles(m, v, i, len, d, axis, x, y, w, h, padding, type = "") {
   Local dx, dy, tileH, tileW, tileX, tileY
   Local batchHwnds, batchX, batchY, batchW, batchH, batchOffsetX, batchOffsetY, batchN
   Local wndId, wndMinMax, wndX, wndY, wndW, wndH, offsetX, offsetY
+  Local sendX, sendY, sendW, sendH
   Local hdwp, batchApplied
   Local SWP_FLAGS
 
@@ -465,11 +466,11 @@ Tiler_stackTiles(m, v, i, len, d, axis, x, y, w, h, padding, type = "") {
     hdwp := DllCall("BeginDeferWindowPos", "Int", batchN, "Ptr")
     If hdwp {
       Loop, % batchN {
+        Window_correctedSendCoords(batchX[A_Index], batchY[A_Index], batchW[A_Index], batchH[A_Index]
+            , batchOffsetX[A_Index], batchOffsetY[A_Index]
+            , sendX, sendY, sendW, sendH)
         hdwp := DllCall("DeferWindowPos", "Ptr", hdwp, "Ptr", batchHwnds[A_Index], "Ptr", 0
-            , "Int", batchX[A_Index] + batchOffsetX[A_Index]
-            , "Int", batchY[A_Index] + batchOffsetY[A_Index]
-            , "Int", batchW[A_Index] - 2 * batchOffsetX[A_Index]
-            , "Int", batchH[A_Index] - 2 * batchOffsetY[A_Index]
+            , "Int", sendX, "Int", sendY, "Int", sendW, "Int", sendH
             , "UInt", SWP_FLAGS, "Ptr")
         If Not hdwp
           Break

@@ -287,24 +287,29 @@ Window_move(wndId, x, y, width, height) {
   }
 }
 
+;; Feedforward DWM-frame correction. Offset_X/Y from Window_getPosEx are
+;; (visible - GWR)/2 -- negative on Win10/11 because GetWindowRect
+;; includes the invisible drop-shadow. To land the visible rect at
+;; (tileX, tileY, tileW, tileH), SetWindowPos needs the GWR shifted by
+;; the shadow and grown by 2x shadow. Pure ByRef so it's Yunit-testable.
+Window_correctedSendCoords(tileX, tileY, tileW, tileH, offsetX, offsetY
+    , ByRef sendX, ByRef sendY, ByRef sendW, ByRef sendH) {
+  sendX := tileX + offsetX
+  sendY := tileY + offsetY
+  sendW := tileW - 2 * offsetX
+  sendH := tileH - 2 * offsetY
+}
+
 ;; Async move with feedforward DWM-frame correction. Doesn't block.
-;; Offset_X/Y from Window_getPosEx are (visible - GWR)/2 -- negative on
-;; Win10/11 because GetWindowRect includes the invisible drop-shadow,
-;; so sendX = visibleTarget + offsetX shifts the GWR left by the
-;; shadow width and sendW = visibleTarget - 2*offsetX grows the GWR to
-;; wrap both shadow edges.
 Window_moveAsync(wndId, x, y, width, height) {
-  Local wndX, wndY, wndW, wndH, offsetX, offsetY, SWP_FLAGS
+  Local wndX, wndY, wndW, wndH, offsetX, offsetY, sendX, sendY, sendW, sendH, SWP_FLAGS
   If Not wndId
     Return 1
   Window_getPosEx(wndId, wndX, wndY, wndW, wndH, offsetX, offsetY)
-  x      += offsetX
-  y      += offsetY
-  width  -= 2 * offsetX
-  height -= 2 * offsetY
+  Window_correctedSendCoords(x, y, width, height, offsetX, offsetY, sendX, sendY, sendW, sendH)
   SWP_FLAGS := 0x4000 | 0x0004 | 0x0010 | 0x0200    ;; ASYNCWINDOWPOS | NOZORDER | NOACTIVATE | NOOWNERZORDER
   Return DllCall("SetWindowPos", "Ptr", wndId, "Ptr", 0
-      , "Int", x, "Int", y, "Int", width, "Int", height
+      , "Int", sendX, "Int", sendY, "Int", sendW, "Int", sendH
       , "UInt", SWP_FLAGS) ? 0 : 1
 }
 
