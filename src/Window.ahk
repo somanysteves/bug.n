@@ -287,6 +287,27 @@ Window_move(wndId, x, y, width, height) {
   }
 }
 
+;; Async move with feedforward DWM-frame correction. Doesn't block.
+;; Offset_X/Y from Window_getPosEx are (visible - GWR)/2 -- negative on
+;; Win10/11 because GetWindowRect includes the invisible drop-shadow,
+;; so sendX = visibleTarget + offsetX shifts the GWR left by the
+;; shadow width and sendW = visibleTarget - 2*offsetX grows the GWR to
+;; wrap both shadow edges.
+Window_moveAsync(wndId, x, y, width, height) {
+  Local wndX, wndY, wndW, wndH, offsetX, offsetY, SWP_FLAGS
+  If Not wndId
+    Return 1
+  Window_getPosEx(wndId, wndX, wndY, wndW, wndH, offsetX, offsetY)
+  x      += offsetX
+  y      += offsetY
+  width  -= 2 * offsetX
+  height -= 2 * offsetY
+  SWP_FLAGS := 0x4000 | 0x0004 | 0x0010 | 0x0200    ;; ASYNCWINDOWPOS | NOZORDER | NOACTIVATE | NOOWNERZORDER
+  Return DllCall("SetWindowPos", "Ptr", wndId, "Ptr", 0
+      , "Int", x, "Int", y, "Int", width, "Int", height
+      , "UInt", SWP_FLAGS) ? 0 : 1
+}
+
 Window_restore(wndId = 0) {
   If (wndId = 0)
     WinGet, wndId, ID, A

@@ -379,9 +379,9 @@ Tiler_splitArea(axis, splitRatio, x, y, w, h, gapW, ByRef x1, ByRef y1, ByRef w1
 ;;     padding - Number of pixels to put between areas/windows.
 Tiler_stackTiles(m, v, i, len, d, axis, x, y, w, h, padding, type = "") {
   Local dx, dy, tileH, tileW, tileX, tileY
-  Local batchHwnds, batchX, batchY, batchW, batchH, batchN
-  Local wndId, wndMinMax, wndX, wndY, wndW, wndH
-  Local hdwp, batchApplied, targetX, targetY, targetW, targetH, adjX, adjY, adjW, adjH
+  Local batchHwnds, batchX, batchY, batchW, batchH, batchOffsetX, batchOffsetY, batchN
+  Local wndId, wndMinMax, wndX, wndY, wndW, wndH, offsetX, offsetY
+  Local hdwp, batchApplied
   Local SWP_FLAGS
 
   Perf_start("Tiler_stackTiles")
@@ -418,17 +418,20 @@ Tiler_stackTiles(m, v, i, len, d, axis, x, y, w, h, padding, type = "") {
     Return
   }
 
-  ;; Pass 1: collect windows that need to move. Skip ids that are zero,
-  ;; already in the slot, or hung. Restore-from-minimized must happen here
-  ;; — DeferWindowPos itself won't un-minimize.
+  ;; Pass 1: collect windows that need to move, capturing per-window DWM
+  ;; frame offsets from the same Window_getPosEx call that already drives
+  ;; the "already-in-place" check. Restore-from-minimized must happen
+  ;; here -- DeferWindowPos itself won't un-minimize.
   batchHwnds := []
   batchX := []
   batchY := []
   batchW := []
   batchH := []
+  batchOffsetX := []
+  batchOffsetY := []
   Loop, % len {
     wndId := View_tiledWndId%i%
-    If wndId And Not (Window_getPosEx(wndId, wndX, wndY, wndW, wndH) And Abs(wndX - tileX) < 2 And Abs(wndY - tileY) < 2 And Abs(wndW - tileW) < 2 And Abs(wndH - tileH) < 2) {
+    If wndId And Not (Window_getPosEx(wndId, wndX, wndY, wndW, wndH, offsetX, offsetY) And Abs(wndX - tileX) < 2 And Abs(wndY - tileY) < 2 And Abs(wndW - tileW) < 2 And Abs(wndH - tileH) < 2) {
       If Window_isHung(wndId) {
         Debug_logMessage("DEBUG[2] Tiler_stackTiles: skipping hung window " wndId, 2)
       } Else {
@@ -440,6 +443,8 @@ Tiler_stackTiles(m, v, i, len, d, axis, x, y, w, h, padding, type = "") {
         batchY.Push(tileY)
         batchW.Push(tileW)
         batchH.Push(tileH)
+        batchOffsetX.Push(offsetX)
+        batchOffsetY.Push(offsetY)
       }
     }
     i += d
@@ -447,16 +452,25 @@ Tiler_stackTiles(m, v, i, len, d, axis, x, y, w, h, padding, type = "") {
     tileY += dy
   }
 
-  ;; Pass 2: single SetWindowPos batch via DeferWindowPos. One compositor
-  ;; pass instead of N independent moves.
+  ;; Pass 2: async DeferWindowPos batch. SWP_ASYNCWINDOWPOS posts each
+  ;; move to its window's message queue and returns immediately, so the
+  ;; AHK thread doesn't block on slow window procs (Citrix reconnect,
+  ;; hung apps, etc.). Feedforward DWM correction applied inline so the
+  ;; visible rect lands at (batchX, batchY, batchW, batchH) without a
+  ;; post-move correction loop.
   batchN := batchHwnds.MaxIndex()
   If (batchN > 0) {
-    SWP_FLAGS := 0x0004 | 0x0010 | 0x0200    ;; NOZORDER | NOACTIVATE | NOOWNERZORDER
+    SWP_FLAGS := 0x4000 | 0x0004 | 0x0010 | 0x0200    ;; ASYNCWINDOWPOS | NOZORDER | NOACTIVATE | NOOWNERZORDER
     batchApplied := False
     hdwp := DllCall("BeginDeferWindowPos", "Int", batchN, "Ptr")
     If hdwp {
       Loop, % batchN {
-        hdwp := DllCall("DeferWindowPos", "Ptr", hdwp, "Ptr", batchHwnds[A_Index], "Ptr", 0, "Int", batchX[A_Index], "Int", batchY[A_Index], "Int", batchW[A_Index], "Int", batchH[A_Index], "UInt", SWP_FLAGS, "Ptr")
+        hdwp := DllCall("DeferWindowPos", "Ptr", hdwp, "Ptr", batchHwnds[A_Index], "Ptr", 0
+            , "Int", batchX[A_Index] + batchOffsetX[A_Index]
+            , "Int", batchY[A_Index] + batchOffsetY[A_Index]
+            , "Int", batchW[A_Index] - 2 * batchOffsetX[A_Index]
+            , "Int", batchH[A_Index] - 2 * batchOffsetY[A_Index]
+            , "UInt", SWP_FLAGS, "Ptr")
         If Not hdwp
           Break
       }
@@ -464,30 +478,11 @@ Tiler_stackTiles(m, v, i, len, d, axis, x, y, w, h, padding, type = "") {
         batchApplied := True
     }
 
-    If batchApplied {
-      ;; Pass 3: DPI / DWM-frame correction — mirror Window_move's per-window
-      ;; adjust for windows that landed offset by their invisible chrome.
+    If Not batchApplied {
+      ;; Batch failed -- fall back to per-window async moves. Window_moveAsync
+      ;; applies its own DWM correction, so it gets target (uncorrected) coords.
       Loop, % batchN {
-        wndId := batchHwnds[A_Index]
-        If Window_getPosEx(wndId, wndX, wndY, wndW, wndH) {
-          targetX := batchX[A_Index]
-          targetY := batchY[A_Index]
-          targetW := batchW[A_Index]
-          targetH := batchH[A_Index]
-          If (Abs(wndX - targetX) > 1 Or Abs(wndY - targetY) > 1 Or Abs(wndW - targetW) > 1 Or Abs(wndH - targetH) > 1) {
-            adjX := targetX - (wndX - targetX)
-            adjY := targetY - (wndY - targetY)
-            adjW := targetW + (targetW - wndW - 1)
-            adjH := targetH + (targetH - wndH - 1)
-            WinMove, ahk_id %wndId%, , %adjX%, %adjY%, %adjW%, %adjH%
-          }
-        }
-      }
-    } Else {
-      ;; Batch failed — fall back to per-window Window_move so we don't let
-      ;; Pass 3's correction math fling windows that are still at OLD positions.
-      Loop, % batchN {
-        Window_move(batchHwnds[A_Index], batchX[A_Index], batchY[A_Index], batchW[A_Index], batchH[A_Index])
+        Window_moveAsync(batchHwnds[A_Index], batchX[A_Index], batchY[A_Index], batchW[A_Index], batchH[A_Index])
       }
     }
   }
