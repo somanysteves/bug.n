@@ -20,10 +20,11 @@
   p95 even on responsive windows.
 
   Invoked via `bugn-bench.exe --scenario titlestorm [--iterations N]`.
-  Refuses to run if the playground views (last two) hold live user
-  windows. Restores the original view on exit. Exits with 0 on pass, 1
-  on failure (no redraw events arrived means the shell hook isn't wired
-  up).
+  Refuses to run if the playground view (Config_viewCount) holds live
+  user windows. Restores the original view on exit. Exits with 0 on
+  pass, 1 on failure (fewer than half the expected Manager_onShell-
+  Message samples arrived -- either the shell hook isn't wired or the
+  events are coalescing more than expected).
 */
 
 Bench_runTitleStorm() {
@@ -103,9 +104,13 @@ Bench_runTitleStorm() {
 
   Debug_logMessage("DEBUG[0] Bench_runTitleStorm: " . Bench_iterations . " WinSetTitle calls in " . loopMs . " ms; " . eventCount . " Manager_onShellMessage samples; total " . totalMs . " ms", 0)
 
+  ;; Floor at half iterations (min 1): empirically the mapping is ~1:1, but
+  ;; allow some coalescing loss while still catching wrong-cmdHwnd / hook-
+  ;; unregistered failures from passing on a single stray sample.
   failures := 0
-  If (eventCount < 1) {
-    Debug_logMessage("DEBUG[0] Bench_runTitleStorm FAIL: zero Manager_onShellMessage samples -- shell hook never dispatched any HSHELL_REDRAW", 0)
+  minEvents := Max(Bench_iterations // 2, 1)
+  If (eventCount < minEvents) {
+    Debug_logMessage("DEBUG[0] Bench_runTitleStorm FAIL: only " . eventCount . " Manager_onShellMessage samples out of " . Bench_iterations . " WinSetTitle calls (expected at least " . minEvents . ")", 0)
     failures += 1
   }
 
