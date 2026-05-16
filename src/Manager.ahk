@@ -834,9 +834,11 @@ Manager_onShellMessage(wParam, lParam) {
   If (wParam = 4 Or wParam = 32772) {
     If (lParam = 0) {
       ;; Desktop activated (Citrix reconnect, clicking the shell, etc.).
-      ;; Querying the active window here used to block the AHK thread
-      ;; when post-reconnect windows were slow to service WM_GETTEXT --
-      ;; skip WinGet* entirely; mouse position is all we need.
+      ;; The active-window class/title lookup that used to live here would
+      ;; block the AHK thread when post-reconnect windows were slow to
+      ;; service WM_GETTEXT -- mouse position alone is enough to identify
+      ;; the active monitor. (Bar_updateTitle below still queries the
+      ;; active window, but its title fetch is non-blocking-capped.)
       MouseGetPos, x, y
       m := Monitor_get(x, y)
       If m
@@ -844,8 +846,8 @@ Manager_onShellMessage(wParam, lParam) {
       Bar_updateTitle()
     } Else {
       ;; Query lParam directly (the window that just got focus) instead
-      ;; of WinGet ID, A -- saves a round-trip and keeps this path free
-      ;; of SendMessage calls. WorkerW always has an empty title so
+      ;; of WinGet ID, A on the OS-reported active window -- saves a
+      ;; round-trip in this block. WorkerW always has an empty title so
       ;; class alone identifies the desktop-click case.
       WinGetClass, aWndClass, ahk_id %lParam%
       If (aWndClass = "WorkerW") {

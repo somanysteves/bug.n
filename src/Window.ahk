@@ -195,13 +195,19 @@ Window_isHung(wndId) {
 ;; slow to service WM_GETTEXT -- the pathology behind keyboard hangs when
 ;; clicking into Edge/Slack under load. Returns "" on timeout, hung window,
 ;; or null HWND.
+;;
+;; 4096-WCHAR buffer (8192 bytes); wParam is max chars to receive
+;; including the null terminator. Real-world top-level titles are
+;; typically <256 chars; this gives ample headroom so Manager_applyRules'
+;; title-regex matching doesn't get truncated on long titles (browser
+;; tabs with URL+query, file dialogs with deep paths).
 Window_getTitleNonBlocking(wndId) {
   Local title, result
   If Not wndId
     Return ""
-  VarSetCapacity(title, 1024)
+  VarSetCapacity(title, 8192)
   result := DllCall("SendMessageTimeout", "Ptr", wndId, "UInt", 0x000D
-      , "UPtr", 511, "Ptr", &title, "UInt", 0x0002, "UInt", 200, "UPtr*", 0)
+      , "UPtr", 4095, "Ptr", &title, "UInt", 0x0002, "UInt", 200, "UPtr*", 0)
   If Not result
     Return ""
   VarSetCapacity(title, -1)
