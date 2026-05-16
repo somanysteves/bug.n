@@ -189,6 +189,31 @@ Window_isHung(wndId) {
   Return DllCall("IsHungAppWindow", "Ptr", wndId, "Int")
 }
 
+;; Non-blocking title fetch: SendMessageTimeout with SMTO_ABORTIFHUNG and a
+;; 200 ms cap. AHK's WinGetTitle (GetWindowText -> SendMessage, no timeout)
+;; can stall the AHK thread for seconds when the target window's proc is
+;; slow to service WM_GETTEXT -- the pathology behind keyboard hangs when
+;; clicking into Edge/Slack under load. Returns "" on timeout, hung window,
+;; or null HWND.
+;;
+;; 4096-WCHAR buffer (8192 bytes); wParam is max chars to receive
+;; including the null terminator. Real-world top-level titles are
+;; typically <256 chars; this gives ample headroom so Manager_applyRules'
+;; title-regex matching doesn't get truncated on long titles (browser
+;; tabs with URL+query, file dialogs with deep paths).
+Window_getTitleNonBlocking(wndId) {
+  Local title, result
+  If Not wndId
+    Return ""
+  VarSetCapacity(title, 8192)
+  result := DllCall("SendMessageTimeout", "Ptr", wndId, "UInt", 0x000D
+      , "UPtr", 4095, "Ptr", &title, "UInt", 0x0002, "UInt", 200, "UPtr*", 0)
+  If Not result
+    Return ""
+  VarSetCapacity(title, -1)
+  Return title
+}
+
 Window_isNotVisible(wndId) {
   WS_VISIBLE = 0x10000000
   WinGet, wndStyle, Style, ahk_id %wndId%
@@ -285,6 +310,32 @@ Window_move(wndId, x, y, width, height) {
     SendMessage, WM_EXITSIZEMOVE, , , , ahk_id %wndId%
     Return, 0
   }
+}
+
+;; Feedforward DWM-frame correction. Offset_X/Y from Window_getPosEx are
+;; (visible - GWR)/2 -- negative on Win10/11 because GetWindowRect
+;; includes the invisible drop-shadow. To land the visible rect at
+;; (tileX, tileY, tileW, tileH), SetWindowPos needs the GWR shifted by
+;; the shadow and grown by 2x shadow. Pure ByRef so it's Yunit-testable.
+Window_correctedSendCoords(tileX, tileY, tileW, tileH, offsetX, offsetY
+    , ByRef sendX, ByRef sendY, ByRef sendW, ByRef sendH) {
+  sendX := tileX + offsetX
+  sendY := tileY + offsetY
+  sendW := tileW - 2 * offsetX
+  sendH := tileH - 2 * offsetY
+}
+
+;; Async move with feedforward DWM-frame correction. Doesn't block.
+Window_moveAsync(wndId, x, y, width, height) {
+  Local wndX, wndY, wndW, wndH, offsetX, offsetY, sendX, sendY, sendW, sendH, SWP_FLAGS
+  If Not wndId
+    Return 1
+  Window_getPosEx(wndId, wndX, wndY, wndW, wndH, offsetX, offsetY)
+  Window_correctedSendCoords(x, y, width, height, offsetX, offsetY, sendX, sendY, sendW, sendH)
+  SWP_FLAGS := 0x4000 | 0x0004 | 0x0010 | 0x0200    ;; ASYNCWINDOWPOS | NOZORDER | NOACTIVATE | NOOWNERZORDER
+  Return DllCall("SetWindowPos", "Ptr", wndId, "Ptr", 0
+      , "Int", sendX, "Int", sendY, "Int", sendW, "Int", sendH
+      , "UInt", SWP_FLAGS) ? 0 : 1
 }
 
 Window_restore(wndId = 0) {

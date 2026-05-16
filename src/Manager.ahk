@@ -113,7 +113,7 @@ Manager_applyRules(wndId, ByRef isManaged, ByRef m, ByRef tags, ByRef isFloating
   action      := ""
 
   WinGetClass, wndClass, ahk_id %wndId%
-  WinGetTitle, wndTitle, ahk_id %wndId%
+  wndTitle := Window_getTitleNonBlocking(wndId)
   If (wndClass Or wndTitle) {
     Loop, % Config_ruleCount {
       ;; The rules are traversed in reverse order.
@@ -201,12 +201,55 @@ Manager_cleanup()
   ;; SKAN: Crazy Scripting : Quick Launcher for Portable Apps (http://www.autohotkey.com/forum/topic22398.html)
 }
 
-Manager_closeWindow() {
-  Local aWndId
+;; Parse the AHK modifier prefix characters from a hotkey string and build
+;; a SendInput-compatible key-up sequence for those modifiers. Used by
+;; Manager_closeWindow to drain WM_KEYUP messages that would otherwise
+;; have been routed to (and swallowed by) the closed window, leaving
+;; phantom modifiers held that silently break subsequent hotkeys.
+;;
+;; Prefixes processed: # ! ^ + (Win, Alt, Ctrl, Shift).
+;; Prefixes skipped:   < > * ~ $ (variant / non-modifier-key prefixes).
+;; First unrecognized character ends the prefix scan (it's the key name).
+;; Pure: only reads its argument, returns a string.
+Manager_modifiersFromHotkey(hotkeyStr) {
+  Local result, c
+  result := ""
+  Loop, Parse, hotkeyStr
+  {
+    c := A_LoopField
+    If (c = "#")
+      result .= "{LWin up}{RWin up}"
+    Else If (c = "+")
+      result .= "{LShift up}{RShift up}"
+    Else If (c = "^")
+      result .= "{LCtrl up}{RCtrl up}"
+    Else If (c = "!")
+      result .= "{LAlt up}{RAlt up}"
+    Else If (c = "<" Or c = ">" Or c = "*" Or c = "~" Or c = "$")
+      Continue
+    Else
+      Break
+  }
+  Return result
+}
 
+Manager_closeWindow() {
+  Local aWndId, mods
+
+  mods := Manager_modifiersFromHotkey(A_ThisHotkey)
   WinGet, aWndId, ID, A
-  If Window_isProg(aWndId)
+  If Window_isProg(aWndId) {
     Window_close(aWndId)
+    ;; If the user closed the window with a modifier hotkey (e.g. Win+Shift+C),
+    ;; Windows routes the eventual WM_KEYUP for those modifiers to the focused
+    ;; window. With the window gone, the up events are swallowed and the OS
+    ;; thinks the modifiers are still held -- subsequent hotkeys silently fail
+    ;; to match until the user taps each modifier. SendInput {key up} is a
+    ;; no-op if the key is already up, so this is safe to fire unconditionally
+    ;; for the modifiers in this hotkey.
+    If mods
+      SendInput %mods%
+  }
 }
 
 ; Asynchronous management of various WM properties.
@@ -247,6 +290,12 @@ Manager_validateAliveTimer:
   If (Manager_validateAlive() And Config_dynamicTiling)
     View_arrange(Manager_aMonitor, Monitor_#%Manager_aMonitor%_aView_#1)
   Manager_validateInProgress := False
+Return
+
+;; Debounce target for Bar_updateTitle. See Manager_barTitleAction.
+Manager_barTitleDeferred:
+  Critical Off
+  Bar_updateTitle()
 Return
 
 ;; Deferred handler for Manager_onObjectShowOrHide. The hook callback runs on
@@ -676,8 +725,37 @@ Return
     focus change: 4 or 32772
     title change: 6 or 32774
 */
+
+;; Decides what Manager_onShellMessage should do with Bar_updateTitle at
+;; end-of-handler for a given shell event. Pure so it's Yunit-testable;
+;; the actual side-effect dispatch (immediate call vs. SetTimer vs. no-
+;; op) lives in Manager_onShellMessage.
+;;
+;; Returns:
+;;   "immediate" - call Bar_updateTitle() now. Default for non-REDRAW
+;;                 events where the active window may have changed
+;;                 (create / destroy / activate / rude-app-activate).
+;;   "defer"     - arm a short one-shot timer. HSHELL_REDRAW on the
+;;                 currently active window means its title changed;
+;;                 deferring debounces a burst (e.g. browser streaming
+;;                 a response) into a single bar update after the burst
+;;                 settles, instead of redrawing per chunk.
+;;   "skip"      - do nothing. HSHELL_REDRAW on a background window
+;;                 doesn't change the bar's content (the bar shows the
+;;                 *active* window's title), so the update would be
+;;                 pure waste. This is the largest single win on the
+;;                 streaming-background-window workload.
+Manager_barTitleAction(wParam, lParam, activeWndId) {
+  ;; HSHELL_REDRAW = 6.
+  If (wParam != 6)
+    Return "immediate"
+  If (lParam = activeWndId)
+    Return "defer"
+  Return "skip"
+}
+
 Manager_onShellMessage(wParam, lParam) {
-  Local a, isChanged, aWndClass, aWndHeight, aWndId, aWndTitle, aWndWidth, aWndX, aWndY, benchHandle, i, m, managedKey, t, wndClass, wndId, wndId0, wndIds, wndIsDesktop, wndIsHidden, wndTitle, x, y
+  Local a, action, isChanged, aWndClass, aWndHeight, aWndId, aWndWidth, aWndX, aWndY, benchHandle, i, m, managedKey, t, wndClass, wndId, wndId0, wndIds, wndIsHidden, wndTitle, x, y
   ;; HSHELL_* become global.
 
   ;; MESSAGE NAME AND         ... NUMBER    COMMENTS, POSSIBLE EVENTS
@@ -707,6 +785,15 @@ Manager_onShellMessage(wParam, lParam) {
 
   Debug_logMessage("DEBUG[2] Manager_onShellMessage( wParam: " . wParam . ", lParam: " . lParam . " )", 2)
 
+  ;; Full-handler timing. The existing "Manager_onShellMessage" label starts
+  ;; later (after the early-returns) and measures only the dispatch phase;
+  ;; "_full" wraps the entire function so Perf samples reflect every code
+  ;; path, including HSHELL_FLASH urgent dispatch and the hidden-window
+  ;; early-return. If a new early-return is added below, it must be
+  ;; preceded by Perf_end("Manager_onShellMessage_full") to avoid leaking
+  ;; an unclosed sample.
+  Perf_start("Manager_onShellMessage_full")
+
   ;; Urgent-view dispatch must run before the hidden-window early-return:
   ;; bug.n SW_HIDEs every window that is on a non-active view, and those
   ;; are exactly the windows whose flashes we want to surface as red bar
@@ -729,6 +816,7 @@ Manager_onShellMessage(wParam, lParam) {
     managedKey := Manager_isManaged(lParam)
     If managedKey {
       Manager_markUrgent(managedKey)
+      Perf_end("Manager_onShellMessage_full")
       Return
     }
   }
@@ -739,25 +827,37 @@ Manager_onShellMessage(wParam, lParam) {
     ;;   The problem was, that i. a. claws-mail triggers Manager_sync, but the application window
     ;;   would not be ready for being managed, i. e. class and title were not available. Therefore more
     ;;   attempts were needed.
+    Perf_end("Manager_onShellMessage_full")
     Return
   }
 
-  wndIsDesktop := (lParam = 0)
-  If wndIsDesktop {
-    WinGetClass, wndClass, A
-    WinGetTitle, wndTitle, A
-  }
-  WinGet, aWndId, ID, A
-  WinGetClass, aWndClass, ahk_id %aWndId%
-  WinGetTitle, aWndTitle, ahk_id %aWndId%
-  If ((wParam = 4 Or wParam = 32772) And (aWndClass = "WorkerW" And aWndTitle = "" Or lParam = 0 And aWndClass = "Progman" And aWndTitle = "Program Manager"))
-  {
-    MouseGetPos, x, y
-    m := Monitor_get(x, y)
-    ;; The current position of the mouse cursor defines the active monitor, if the desktop has been activated.
-    If m
-      Manager_aMonitor := m
-    Bar_updateTitle()
+  If (wParam = 4 Or wParam = 32772) {
+    If (lParam = 0) {
+      ;; Desktop activated (Citrix reconnect, clicking the shell, etc.).
+      ;; The active-window class/title lookup that used to live here would
+      ;; block the AHK thread when post-reconnect windows were slow to
+      ;; service WM_GETTEXT -- mouse position alone is enough to identify
+      ;; the active monitor. (Bar_updateTitle below still queries the
+      ;; active window, but its title fetch is non-blocking-capped.)
+      MouseGetPos, x, y
+      m := Monitor_get(x, y)
+      If m
+        Manager_aMonitor := m
+      Bar_updateTitle()
+    } Else {
+      ;; Query lParam directly (the window that just got focus) instead
+      ;; of WinGet ID, A on the OS-reported active window -- saves a
+      ;; round-trip in this block. WorkerW always has an empty title so
+      ;; class alone identifies the desktop-click case.
+      WinGetClass, aWndClass, ahk_id %lParam%
+      If (aWndClass = "WorkerW") {
+        MouseGetPos, x, y
+        m := Monitor_get(x, y)
+        If m
+          Manager_aMonitor := m
+        Bar_updateTitle()
+      }
+    }
   }
 
   ;; This was previously inactive due to `HSHELL_WINDOWREPLACED` not being defined in this function.
@@ -793,6 +893,7 @@ Manager_onShellMessage(wParam, lParam) {
         }
         Manager_pausedForBenchSkipped += 1
         Perf_end("Manager_onShellMessage")
+        Perf_end("Manager_onShellMessage_full")
         Return
       }
       If Manager_pausedForBench {
@@ -902,7 +1003,17 @@ Manager_onShellMessage(wParam, lParam) {
       }
       Bar_updateStatus()
     }
-    Bar_updateTitle()
+    If (wParam = HSHELL_REDRAW) {
+      WinGet, aWndId, ID, A
+      action := Manager_barTitleAction(wParam, lParam, aWndId)
+    } Else {
+      action := "immediate"
+    }
+    If (action = "immediate") {
+      SetTimer, Manager_barTitleDeferred, Off
+      Bar_updateTitle()
+    } Else If (action = "defer")
+      SetTimer, Manager_barTitleDeferred, -50
     Perf_end("Manager_onShellMessage")
 
     ;; Defer orphan validation off the shell-event hot path. Using a
@@ -914,6 +1025,7 @@ Manager_onShellMessage(wParam, lParam) {
     ;; process, etc.). The timer label has a single-runner guard.
     SetTimer, Manager_validateAliveTimer, -200
   }
+  Perf_end("Manager_onShellMessage_full")
 }
 
 Manager_override(rule = "") {
