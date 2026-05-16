@@ -201,12 +201,55 @@ Manager_cleanup()
   ;; SKAN: Crazy Scripting : Quick Launcher for Portable Apps (http://www.autohotkey.com/forum/topic22398.html)
 }
 
-Manager_closeWindow() {
-  Local aWndId
+;; Parse the AHK modifier prefix characters from a hotkey string and build
+;; a SendInput-compatible key-up sequence for those modifiers. Used by
+;; Manager_closeWindow to drain WM_KEYUP messages that would otherwise
+;; have been routed to (and swallowed by) the closed window, leaving
+;; phantom modifiers held that silently break subsequent hotkeys.
+;;
+;; Prefixes processed: # ! ^ + (Win, Alt, Ctrl, Shift).
+;; Prefixes skipped:   < > * ~ $ (variant / non-modifier-key prefixes).
+;; First unrecognized character ends the prefix scan (it's the key name).
+;; Pure: only reads its argument, returns a string.
+Manager_modifiersFromHotkey(hotkeyStr) {
+  Local result, c
+  result := ""
+  Loop, Parse, hotkeyStr
+  {
+    c := A_LoopField
+    If (c = "#")
+      result .= "{LWin up}{RWin up}"
+    Else If (c = "+")
+      result .= "{LShift up}{RShift up}"
+    Else If (c = "^")
+      result .= "{LCtrl up}{RCtrl up}"
+    Else If (c = "!")
+      result .= "{LAlt up}{RAlt up}"
+    Else If (c = "<" Or c = ">" Or c = "*" Or c = "~" Or c = "$")
+      Continue
+    Else
+      Break
+  }
+  Return result
+}
 
+Manager_closeWindow() {
+  Local aWndId, mods
+
+  mods := Manager_modifiersFromHotkey(A_ThisHotkey)
   WinGet, aWndId, ID, A
-  If Window_isProg(aWndId)
+  If Window_isProg(aWndId) {
     Window_close(aWndId)
+    ;; If the user closed the window with a modifier hotkey (e.g. Win+Shift+C),
+    ;; Windows routes the eventual WM_KEYUP for those modifiers to the focused
+    ;; window. With the window gone, the up events are swallowed and the OS
+    ;; thinks the modifiers are still held -- subsequent hotkeys silently fail
+    ;; to match until the user taps each modifier. SendInput {key up} is a
+    ;; no-op if the key is already up, so this is safe to fire unconditionally
+    ;; for the modifiers in this hotkey.
+    If mods
+      SendInput %mods%
+  }
 }
 
 ; Asynchronous management of various WM properties.
