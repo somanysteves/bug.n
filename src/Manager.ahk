@@ -324,7 +324,13 @@ Return
 Manager_winCreateDeferred:
   Critical Off
   winCreateSyncDummy := ""
-  Manager_sync(winCreateSyncDummy)
+  winCreateIsChanged := Manager_sync(winCreateSyncDummy)
+  If winCreateIsChanged
+  {
+    If Config_dynamicTiling
+      View_arrange(Manager_aMonitor, Monitor_#%Manager_aMonitor%_aView_#1)
+    Bar_updateView(Manager_aMonitor, Monitor_#%Manager_aMonitor%_aView_#1)
+  }
 Return
 
 Manager_getWindowInfo() {
