@@ -712,7 +712,7 @@ Manager_barTitleAction(wParam, lParam, activeWndId) {
 }
 
 Manager_onShellMessage(wParam, lParam) {
-  Local a, action, isChanged, aWndClass, aWndHeight, aWndId, aWndTitle, aWndWidth, aWndX, aWndY, benchHandle, i, m, managedKey, t, wndClass, wndId, wndId0, wndIds, wndIsDesktop, wndIsHidden, wndTitle, x, y
+  Local a, action, isChanged, aWndClass, aWndHeight, aWndId, aWndWidth, aWndX, aWndY, benchHandle, i, m, managedKey, t, wndClass, wndId, wndId0, wndIds, wndIsHidden, wndTitle, x, y
   ;; HSHELL_* become global.
 
   ;; MESSAGE NAME AND         ... NUMBER    COMMENTS, POSSIBLE EVENTS
@@ -788,23 +788,30 @@ Manager_onShellMessage(wParam, lParam) {
     Return
   }
 
-  wndIsDesktop := (lParam = 0)
-  If wndIsDesktop {
-    WinGetClass, wndClass, A
-    WinGetTitle, wndTitle, A
-  }
   If (wParam = 4 Or wParam = 32772) {
-    WinGet, aWndId, ID, A
-    WinGetClass, aWndClass, ahk_id %aWndId%
-    WinGetTitle, aWndTitle, ahk_id %aWndId%
-    If (aWndClass = "WorkerW" And aWndTitle = "" Or lParam = 0 And aWndClass = "Progman" And aWndTitle = "Program Manager")
-    {
+    If (lParam = 0) {
+      ;; Desktop activated (Citrix reconnect, clicking the shell, etc.).
+      ;; Querying the active window here used to block the AHK thread
+      ;; when post-reconnect windows were slow to service WM_GETTEXT --
+      ;; skip WinGet* entirely; mouse position is all we need.
       MouseGetPos, x, y
       m := Monitor_get(x, y)
-      ;; The current position of the mouse cursor defines the active monitor, if the desktop has been activated.
       If m
         Manager_aMonitor := m
       Bar_updateTitle()
+    } Else {
+      ;; Query lParam directly (the window that just got focus) instead
+      ;; of WinGet ID, A -- saves a round-trip and keeps this path free
+      ;; of SendMessage calls. WorkerW always has an empty title so
+      ;; class alone identifies the desktop-click case.
+      WinGetClass, aWndClass, ahk_id %lParam%
+      If (aWndClass = "WorkerW") {
+        MouseGetPos, x, y
+        m := Monitor_get(x, y)
+        If m
+          Manager_aMonitor := m
+        Bar_updateTitle()
+      }
     }
   }
 
