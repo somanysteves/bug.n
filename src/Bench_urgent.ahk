@@ -46,8 +46,10 @@ Bench_runUrgent() {
     Debug_logMessage("DEBUG[0] Bench_runUrgent: playground views " . awayView . "/" . testView . " on monitor " . aMonitor . " hold live user windows. Aborting to preserve them.", 0)
     ExitApp, 3
   }
-  View_#%aMonitor%_#%testView%_wndIds := ""
-  View_#%aMonitor%_#%awayView%_wndIds := ""
+  View_#%aMonitor%_#%testView%_wndIds   := ""
+  View_#%aMonitor%_#%awayView%_wndIds   := ""
+  View_#%aMonitor%_#%testView%_isUrgent := False
+  View_#%aMonitor%_#%awayView%_isUrgent := False
 
   ;; Land the spawned cmd on testView.
   Monitor_activateView(testView)
@@ -70,6 +72,16 @@ Bench_runUrgent() {
   ;; non-active view, and the dispatch must still surface those flashes.
   Monitor_activateView(awayView)
   Sleep, 300
+
+  ;; Win11 flashes the taskbar entry of a newly-spawned window that fails
+  ;; to grab foreground (foreground-lock-interval); the OS may also flash
+  ;; when the window is SW_HIDEd by the awayView switch. Either path runs
+  ;; our shell hook → Manager_markUrgent before we get here. Discard any
+  ;; urgent state from these setup-driven flashes so the precondition
+  ;; check sees a clean slate; the deliberate Bench_flashWindow below
+  ;; sets it again.
+  View_#%aMonitor%_#%testView%_isUrgent := False
+  Window_#%cmdHwnd%_isUrgent            := False
 
   failures := 0
 
