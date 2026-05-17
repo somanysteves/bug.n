@@ -37,12 +37,40 @@ View_init(m, v)
   View_#%m%_#%v%_isUrgent       := False
 }
 
+;; Cycle entrypoint. Bound to Win+J / Win+K via Config_initDefaultHotkeys.
+;; AHK's default #MaxThreadsBuffer=Off silently drops a hotkey press that
+;; arrives while the prior handler is still running, and each WinActivate
+;; takes ~120ms (see #46 baseline). Without coalescing, anything faster
+;; than ~7Hz cycling loses presses.
+;;
+;; Wrapper splits the cycle path (d != 0) from the absolute-index path
+;; (d = 0). Cycle path accumulates the signed delta and arms a one-shot
+;; timer; each press re-arms it, so a rapid burst collapses into one
+;; View_activateWindow_now(0, +/-N) call after ~30ms of quiet. The
+;; absolute-index path is unchanged -- the user explicitly named a
+;; target, no series semantics to coalesce.
 View_activateWindow(i, d = 0) {
-  Local aWndId, direction, failure, j, v, wndId, wndId0, wndIds
+  Global View_cycleDelta
 
   Debug_logMessage("DEBUG[1] View_activateWindow(" . i . ", " . d . ")", 1)
   If (i = 0) And (d = 0)
     Return
+
+  If (d != 0) {
+    View_cycleDelta += d
+    SetTimer, View_cycleDrain, -30
+    Return
+  }
+
+  View_activateWindow_now(i, 0)
+}
+
+;; Synchronous worker. Called either directly (d=0 absolute-index path)
+;; or from View_cycleDrain once per burst. Body lifted verbatim from the
+;; pre-coalescer View_activateWindow except the (i = 0 And d = 0) guard
+;; -- the wrapper handles that.
+View_activateWindow_now(i, d) {
+  Local aWndId, direction, failure, j, v, wndId, wndId0, wndIds
 
   Perf_start("View_activateWindow")
   WinGet, aWndId, ID, A
@@ -88,6 +116,19 @@ View_activateWindow(i, d = 0) {
   }
   Perf_end("View_activateWindow")
 }
+
+;; Top-level label fired by the SetTimer in View_activateWindow. Snapshot
+;; the delta before doing the work so any presses arriving during the
+;; ~120ms WinActivate re-accumulate cleanly for the next drain. AHK label
+;; variables are global by default; the _pending temp leaks into the
+;; global namespace but is harmless (single integer, overwritten each
+;; drain).
+View_cycleDrain:
+  View_cycleDelta_pending := View_cycleDelta
+  View_cycleDelta := 0
+  If View_cycleDelta_pending
+    View_activateWindow_now(0, View_cycleDelta_pending)
+Return
 
 View_addWindow(m, v, wndId) {
   Local i, mSplit, n, replace, search
