@@ -21,12 +21,19 @@ Window_getActiveId() {
 }
 
 Window_activate(wndId) {
+  Perf_start("Window_activate")
   If Window_isHung(wndId) {
     Debug_logMessage("DEBUG[2] Window_activate: Potentially hung window " . wndId, 2)
+    Perf_end("Window_activate")
     Return, 1
   } Else {
+    Perf_start("Window_activate_winActivate")
     WinActivate, ahk_id %wndId%
+    Perf_end("Window_activate_winActivate")
+    Perf_start("Window_activate_winGetA")
     WinGet, aWndId, ID, A
+    Perf_end("Window_activate_winGetA")
+    Perf_end("Window_activate")
     If (wndId != aWndId)
       Return, 1
     Else

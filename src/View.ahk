@@ -37,58 +37,59 @@ View_init(m, v)
   View_#%m%_#%v%_isUrgent       := False
 }
 
+;; Cycle entrypoint. Bound to Win+J / Win+K via Config_initDefaultHotkeys.
+;; AHK's default #MaxThreadsBuffer=Off silently drops a hotkey press that
+;; arrives while the prior handler is still running, and each WinActivate
+;; takes ~120ms (see #46 baseline). Without coalescing, anything faster
+;; than ~7Hz cycling loses presses.
+;;
+;; Wrapper splits the cycle path (d != 0) from the absolute-index path
+;; (d = 0). Cycle path accumulates the signed delta and arms a one-shot
+;; timer; each press re-arms it, so a rapid burst collapses into one
+;; View_activateWindow_now(0, +/-N) call after ~30ms of quiet. The
+;; absolute-index path is unchanged -- the user explicitly named a
+;; target, no series semantics to coalesce.
 View_activateWindow(i, d = 0) {
-  Local aWndId, direction, failure, j, v, wndId, wndId0, wndIds
+  Global View_cycleDelta
 
   Debug_logMessage("DEBUG[1] View_activateWindow(" . i . ", " . d . ")", 1)
   If (i = 0) And (d = 0)
     Return
 
-  WinGet, aWndId, ID, A
-  Debug_logMessage("DEBUG[2] Active Windows ID: " . aWndId, 2, False)
-  v := Monitor_#%Manager_aMonitor%_aView_#1
-  Debug_logMessage("DEBUG[2] View (" . v . ") wndIds: " . View_#%Manager_aMonitor%_#%v%_wndIds, 2, False)
-  StringTrimRight, wndIds, View_#%Manager_aMonitor%_#%v%_wndIds, 1
-  StringSplit, wndId, wndIds, `;
-  Debug_logMessage("DEBUG[2] wndId count: " . wndId0, 2, False)
-  If (i > 0) And (i <= wndId0) And (d = 0) {
-    wndId := wndId%i%
-    Window_set(wndId, "AlwaysOnTop", "On")
-    Window_set(wndId, "AlwaysOnTop", "Off")
-    Window_#%wndId%_isMinimized := False
-    Manager_winActivate(wndId)
-  } Else If (wndId0 > 1) {
-    If Not InStr(Manager_managedWndIds, aWndId . ";") Or Window_#%aWndId%_isFloating
-      Window_set(aWndId, "Bottom", "")
-    Loop, % wndId0 {
-      If (wndId%A_Index% = aWndId) {
-        j := A_Index
-        Break
-      }
-    }
-    Debug_logMessage("DEBUG[2] Current wndId index: " . j, 2, False)
-
-    If (d > 0)
-      direction = 1
-    Else
-      direction = -1
-    i := Manager_loop(j, d, 1, wndId0)
-    Loop, % wndId0 {
-      Debug_logMessage("DEBUG[2] Next wndId index: " . i, 2, False)
-      wndId := wndId%i%
-      If Not Window_#%wndId%_isMinimized {
-        Window_set(wndId, "AlwaysOnTop", "On")
-        Window_set(wndId, "AlwaysOnTop", "Off")
-
-        ;; If there are hung windows on the screen, we still want to be able to cycle through them.
-        failure := Manager_winActivate(wndId)
-        If Not failure
-          Break
-      }
-      i := Manager_loop(i, direction, 1, wndId0)
-    }
+  If (d != 0) {
+    View_cycleDelta += d
+    SetTimer, View_cycleDrain, -30
+    Return
   }
+
+  View_activateWindow_now(i, 0)
 }
+
+;; View_activateWindow_now (the synchronous worker) lives in
+;; src/View_activateWindow_now.ahk so tests can stub it -- see
+;; tests/README.md for the stub-swap pattern.
+
+;; Top-level label fired by the SetTimer in View_activateWindow. Snapshot
+;; the delta before doing the work so any presses arriving during the
+;; ~120ms WinActivate re-accumulate cleanly for the next drain. AHK label
+;; variables are global by default; the _pending temp leaks into the
+;; global namespace but is harmless (single integer, overwritten each
+;; drain).
+;;
+;; If View_cycleDelta is non-zero after the worker returns, presses
+;; landed during the work. Their hotkey-thread SetTimer re-arm may have
+;; been swallowed -- AHK can drop a timer fire while the same label is
+;; already running, leaving the timer disabled with no pending fire.
+;; Re-arm explicitly so the accumulated presses get drained on the next
+;; tick instead of being stuck.
+View_cycleDrain:
+  View_cycleDelta_pending := View_cycleDelta
+  View_cycleDelta := 0
+  If View_cycleDelta_pending
+    View_activateWindow_now(0, View_cycleDelta_pending)
+  If View_cycleDelta
+    View_cycleDrainRearm()
+Return
 
 View_addWindow(m, v, wndId) {
   Local i, mSplit, n, replace, search

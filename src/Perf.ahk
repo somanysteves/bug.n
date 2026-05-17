@@ -367,6 +367,24 @@ Perf_runBench(windowCount, iterations) {
   Perf_writeRow("window_shuffle", finalCount, "View_arrange,Tiler_stackTiles")
   Sleep, 300
 
+  ;; Scenario 3b: window_cycle — measures the per-cycle WORK cost of
+  ;; advancing the active window within the current view. Win+J / Win+K
+  ;; in production routes through View_activateWindow's coalescer (#46),
+  ;; which returns immediately and arms a one-shot timer; a tight loop
+  ;; over that wrapper would measure only scheduling overhead. The bench
+  ;; calls View_activateWindow_now directly so we keep measuring the
+  ;; underlying activation cost -- regression detection on the work
+  ;; itself, not on the coalescer. focusFirstSpawned re-anchors the
+  ;; active window since the prior shuffle scenario rotated the wndIds
+  ;; list.
+  Perf_focusFirstSpawned(spawnedWndIds)
+  Perf_resetSamples()
+  Loop, % iterations {
+    View_activateWindow_now(0, +1)
+  }
+  Perf_writeRow("window_cycle", finalCount, "View_activateWindow,Manager_winActivate,Manager_setCursor,Window_activate,Window_activate_winActivate,Window_activate_winGetA")
+  Sleep, 300
+
   ;; Scenario 4: populated view_switch — spawn another batch of windows on
   ;; switchTarget so flipping between the two views exercises the real
   ;; hide/show + arrange paths with N windows on each side. The empty-views

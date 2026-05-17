@@ -80,6 +80,7 @@ Return
 #Include %A_ScriptDir%\ResourceMonitor.ahk
 #Include %A_ScriptDir%\Tiler.ahk
 #Include %A_ScriptDir%\View.ahk
+#Include %A_ScriptDir%\View_activateWindow_now.ahk
 #Include %A_ScriptDir%\View_arrange.ahk
 #Include %A_ScriptDir%\View_getTiledWndIds.ahk
 #Include %A_ScriptDir%\Window.ahk
