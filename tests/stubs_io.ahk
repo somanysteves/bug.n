@@ -51,6 +51,35 @@ Window_getHidden(wndId, ByRef wndClass, ByRef wndTitle) {
   Return False
 }
 
+;; Test-only stubs for View_activateWindow_now and View_cycleDrainRearm
+;; (real bodies in src/View_activateWindow_now.ahk). The worker reaches
+;; out to the OS via WinGet/WinActivate/Window_set; the rearm helper
+;; calls SetTimer for the View_cycleDrain label, which the test process
+;; exits before the timer would fire. Both are observable here for
+;; tests of the View_cycleDrain re-arm contract.
+;;
+;; Tests may set Test_View_activateWindow_now_inject := <delta> to have
+;; the stub increment View_cycleDelta during its call -- simulating a
+;; hotkey press arriving while the drain is mid-work.
+Test_View_activateWindow_now_calls       := ""
+Test_View_activateWindow_now_inject      := 0
+Test_View_cycleDrainRearm_callCount      := 0
+
+View_activateWindow_now(i, d) {
+  Global Test_View_activateWindow_now_calls, Test_View_activateWindow_now_inject
+  Global View_cycleDelta
+  Test_View_activateWindow_now_calls .= i . "," . d . ";"
+  If Test_View_activateWindow_now_inject {
+    View_cycleDelta += Test_View_activateWindow_now_inject
+    Test_View_activateWindow_now_inject := 0
+  }
+}
+
+View_cycleDrainRearm() {
+  Global Test_View_cycleDrainRearm_callCount
+  Test_View_cycleDrainRearm_callCount += 1
+}
+
 ;; Test-only replacement for View_getTiledWndIds. The production
 ;; version (src/View_getTiledWndIds.ahk) filters the view's wndIds
 ;; list with WinExist + Window_isHung, which rejects fake test window

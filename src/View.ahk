@@ -65,57 +65,9 @@ View_activateWindow(i, d = 0) {
   View_activateWindow_now(i, 0)
 }
 
-;; Synchronous worker. Called either directly (d=0 absolute-index path)
-;; or from View_cycleDrain once per burst. Body lifted verbatim from the
-;; pre-coalescer View_activateWindow except the (i = 0 And d = 0) guard
-;; -- the wrapper handles that.
-View_activateWindow_now(i, d) {
-  Local aWndId, direction, failure, j, v, wndId, wndId0, wndIds
-
-  Perf_start("View_activateWindow")
-  WinGet, aWndId, ID, A
-  Debug_logMessage("DEBUG[2] Active Windows ID: " . aWndId, 2, False)
-  v := Monitor_#%Manager_aMonitor%_aView_#1
-  Debug_logMessage("DEBUG[2] View (" . v . ") wndIds: " . View_#%Manager_aMonitor%_#%v%_wndIds, 2, False)
-  StringTrimRight, wndIds, View_#%Manager_aMonitor%_#%v%_wndIds, 1
-  StringSplit, wndId, wndIds, `;
-  Debug_logMessage("DEBUG[2] wndId count: " . wndId0, 2, False)
-  If (i > 0) And (i <= wndId0) And (d = 0) {
-    wndId := wndId%i%
-    Window_set(wndId, "AlwaysOnTop", "On")
-    Window_set(wndId, "AlwaysOnTop", "Off")
-    Window_#%wndId%_isMinimized := False
-    Manager_winActivate(wndId)
-  } Else If (wndId0 > 1) {
-    If Not InStr(Manager_managedWndIds, aWndId . ";") Or Window_#%aWndId%_isFloating
-      Window_set(aWndId, "Bottom", "")
-    Loop, % wndId0 {
-      If (wndId%A_Index% = aWndId) {
-        j := A_Index
-        Break
-      }
-    }
-    Debug_logMessage("DEBUG[2] Current wndId index: " . j, 2, False)
-
-    If (d > 0)
-      direction = 1
-    Else
-      direction = -1
-    i := Manager_loop(j, d, 1, wndId0)
-    Loop, % wndId0 {
-      Debug_logMessage("DEBUG[2] Next wndId index: " . i, 2, False)
-      wndId := wndId%i%
-      If Not Window_#%wndId%_isMinimized {
-        ;; If there are hung windows on the screen, we still want to be able to cycle through them.
-        failure := Manager_winActivate(wndId)
-        If Not failure
-          Break
-      }
-      i := Manager_loop(i, direction, 1, wndId0)
-    }
-  }
-  Perf_end("View_activateWindow")
-}
+;; View_activateWindow_now (the synchronous worker) lives in
+;; src/View_activateWindow_now.ahk so tests can stub it -- see
+;; tests/README.md for the stub-swap pattern.
 
 ;; Top-level label fired by the SetTimer in View_activateWindow. Snapshot
 ;; the delta before doing the work so any presses arriving during the
@@ -123,11 +75,20 @@ View_activateWindow_now(i, d) {
 ;; variables are global by default; the _pending temp leaks into the
 ;; global namespace but is harmless (single integer, overwritten each
 ;; drain).
+;;
+;; If View_cycleDelta is non-zero after the worker returns, presses
+;; landed during the work. Their hotkey-thread SetTimer re-arm may have
+;; been swallowed -- AHK can drop a timer fire while the same label is
+;; already running, leaving the timer disabled with no pending fire.
+;; Re-arm explicitly so the accumulated presses get drained on the next
+;; tick instead of being stuck.
 View_cycleDrain:
   View_cycleDelta_pending := View_cycleDelta
   View_cycleDelta := 0
   If View_cycleDelta_pending
     View_activateWindow_now(0, View_cycleDelta_pending)
+  If View_cycleDelta
+    View_cycleDrainRearm()
 Return
 
 View_addWindow(m, v, wndId) {
