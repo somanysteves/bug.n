@@ -382,7 +382,7 @@ Perf_runBench(windowCount, iterations) {
   Loop, % iterations {
     View_activateWindow(0, +1)
   }
-  Perf_writeRow("window_cycle", finalCount, "View_activateWindow,Manager_winActivate")
+  Perf_writeRow("window_cycle", finalCount, "View_activateWindow,Manager_winActivate,Manager_setCursor,Window_activate,Window_activate_winActivate,Window_activate_winGetA")
   Sleep, 300
 
   ;; Scenario 4: populated view_switch — spawn another batch of windows on

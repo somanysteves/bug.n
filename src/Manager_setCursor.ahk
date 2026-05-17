@@ -19,6 +19,7 @@
 Manager_setCursor(wndId) {
   Local wndHeight, wndWidth, wndX, wndY
 
+  Perf_start("Manager_setCursor")
   If Config_mouseFollowsFocus {
     If wndId {
       WinGetPos, wndX, wndY, wndWidth, wndHeight, ahk_id %wndId%
@@ -26,4 +27,5 @@ Manager_setCursor(wndId) {
     } Else
       DllCall("SetCursorPos", "Int", Round(Monitor_#%Manager_aMonitor%_x + Monitor_#%Manager_aMonitor%_width / 2), "Int", Round(Monitor_#%Manager_aMonitor%_y + Monitor_#%Manager_aMonitor%_height / 2))
   }
+  Perf_end("Manager_setCursor")
 }
