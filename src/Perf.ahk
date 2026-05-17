@@ -367,6 +367,24 @@ Perf_runBench(windowCount, iterations) {
   Perf_writeRow("window_shuffle", finalCount, "View_arrange,Tiler_stackTiles")
   Sleep, 300
 
+  ;; Scenario 3b: window_cycle — Win+J / Win+K route to
+  ;; View_activateWindow(0, ±1), which advances the active window within
+  ;; the current view's wndIds order. Per-call cost = the AlwaysOnTop
+  ;; On/Off z-order dance (View_activateWindow_aot) + the WinActivate +
+  ;; verify-get pass (Manager_winActivate). Issue #46: sustained cycling
+  ;; drops presses because the handler latency exceeds the inter-press
+  ;; interval and AHK's default #MaxThreadsBuffer=Off silently discards
+  ;; keypresses while the prior call is still running.
+  ;; focusFirstSpawned re-anchors the active window since the prior
+  ;; shuffle scenario rotated the wndIds list.
+  Perf_focusFirstSpawned(spawnedWndIds)
+  Perf_resetSamples()
+  Loop, % iterations {
+    View_activateWindow(0, +1)
+  }
+  Perf_writeRow("window_cycle", finalCount, "View_activateWindow,View_activateWindow_aot,Manager_winActivate")
+  Sleep, 300
+
   ;; Scenario 4: populated view_switch — spawn another batch of windows on
   ;; switchTarget so flipping between the two views exercises the real
   ;; hide/show + arrange paths with N windows on each side. The empty-views

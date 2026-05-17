@@ -44,6 +44,7 @@ View_activateWindow(i, d = 0) {
   If (i = 0) And (d = 0)
     Return
 
+  Perf_start("View_activateWindow")
   WinGet, aWndId, ID, A
   Debug_logMessage("DEBUG[2] Active Windows ID: " . aWndId, 2, False)
   v := Monitor_#%Manager_aMonitor%_aView_#1
@@ -77,8 +78,10 @@ View_activateWindow(i, d = 0) {
       Debug_logMessage("DEBUG[2] Next wndId index: " . i, 2, False)
       wndId := wndId%i%
       If Not Window_#%wndId%_isMinimized {
+        Perf_start("View_activateWindow_aot")
         Window_set(wndId, "AlwaysOnTop", "On")
         Window_set(wndId, "AlwaysOnTop", "Off")
+        Perf_end("View_activateWindow_aot")
 
         ;; If there are hung windows on the screen, we still want to be able to cycle through them.
         failure := Manager_winActivate(wndId)
@@ -88,6 +91,7 @@ View_activateWindow(i, d = 0) {
       i := Manager_loop(i, direction, 1, wndId0)
     }
   }
+  Perf_end("View_activateWindow")
 }
 
 View_addWindow(m, v, wndId) {
