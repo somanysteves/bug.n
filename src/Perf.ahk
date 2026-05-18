@@ -485,6 +485,8 @@ Perf_runBench(windowCount, iterations) {
   Perf_writeRow("window_move_area", populatedCount, "View_moveWindow,Window_moveAsync,Manager_setCursor")
   Config_dynamicTiling := prevDynamicTiling
   View_arrange(Manager_aMonitor, switchTarget)
+  ;; Non-blank Tiler_layoutTiles doesn't reset area_#0; do it manually.
+  View_#%Manager_aMonitor%_#%switchTarget%_area_#0 := 0
   Sleep, 300
 
   ;; Scenario 5c: window_maximize — Win+Shift+M / Alt+Shift+M
