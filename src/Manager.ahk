@@ -557,12 +557,14 @@ Manager_manage(preferredMonitor, preferredView, wndId, rule = "") {
 Manager_maximizeWindow() {
   Local aWndId
 
+  Perf_start("Manager_maximizeWindow")
   WinGet, aWndId, ID, A
   If InStr(Manager_managedWndIds, aWndId ";") And Not Window_#%aWndId%_isFloating
     View_toggleFloatingWindow(aWndId)
   Window_set(aWndId, "Top", "")
 
-  Window_move(aWndId, Monitor_#%Manager_aMonitor%_x, Monitor_#%Manager_aMonitor%_y, Monitor_#%Manager_aMonitor%_width, Monitor_#%Manager_aMonitor%_height)
+  Window_moveAsync(aWndId, Monitor_#%Manager_aMonitor%_x, Monitor_#%Manager_aMonitor%_y, Monitor_#%Manager_aMonitor%_width, Monitor_#%Manager_aMonitor%_height)
+  Perf_end("Manager_maximizeWindow")
 }
 
 Manager_minimizeWindow() {

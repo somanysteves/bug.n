@@ -248,7 +248,7 @@ Perf_killHalfPids(pidList) {
 ;; The original view is restored on exit; saved session state is left
 ;; alone (Main_cleanup skips Manager_saveState in bench mode).
 Perf_runBench(windowCount, iterations) {
-  Global Manager_aMonitor, Manager_managedWndIds, Config_viewCount, Perf_csvPath
+  Global Manager_aMonitor, Manager_managedWndIds, Config_viewCount, Perf_csvPath, Config_dynamicTiling
 
   aMonitor := Manager_aMonitor
   originalView := Monitor_#%aMonitor%_aView_#1
@@ -459,6 +459,49 @@ Perf_runBench(windowCount, iterations) {
     View_setLayoutProperty("StackMX", 0, -1)
   }
   Perf_writeRow("layout_restructure", populatedCount, "View_setLayoutProperty,View_arrange,Tiler_stackTiles")
+  Sleep, 300
+
+  ;; Scenario 5b: window_move_area — Alt+1..0 / Alt+J / Alt+K
+  ;; (View_moveWindow) moves the focused window between tile areas without
+  ;; re-arranging the view. Exercises the Window_moveAsync wrapper on a
+  ;; single window (one SetWindowPos call, no Tiler batch).
+  ;;
+  ;; View_moveWindow's inner block only fires when View_#m_#v_area_#0 > 0,
+  ;; and area_#0 is only populated by Tiler_layoutTiles's "blank" path —
+  ;; which itself only runs when Config_dynamicTiling is False (static tile
+  ;; mode). The default (and the user's) Config_dynamicTiling = True path
+  ;; never populates areas, leaving View_moveWindow effectively a no-op
+  ;; (see the @TODO in View.ahk:195). Toggle Config_dynamicTiling False
+  ;; around the scenario, prime area_#0 via View_arrange, then restore.
+  prevDynamicTiling := Config_dynamicTiling
+  Config_dynamicTiling := False
+  View_arrange(Manager_aMonitor, switchTarget)
+  Sleep, 100
+  Perf_focusFirstSpawned(secondWndIds)
+  Perf_resetSamples()
+  Loop, % iterations {
+    View_moveWindow(0, +1)
+  }
+  Perf_writeRow("window_move_area", populatedCount, "View_moveWindow,Window_moveAsync,Manager_setCursor")
+  Config_dynamicTiling := prevDynamicTiling
+  View_arrange(Manager_aMonitor, switchTarget)
+  ;; Non-blank Tiler_layoutTiles doesn't reset area_#0; do it manually.
+  View_#%Manager_aMonitor%_#%switchTarget%_area_#0 := 0
+  Sleep, 300
+
+  ;; Scenario 5c: window_maximize — Win+Shift+M / Alt+Shift+M
+  ;; (Manager_maximizeWindow) floats the active window and sizes it to the
+  ;; full monitor. First iteration also calls View_toggleFloatingWindow
+  ;; (cold cost in max/p95); after that the body is Window_set + the async
+  ;; SetWindowPos each iteration. Window stays floating after this scenario
+  ;; — taskbar_toggle below ignores floaters in its re-arrange so it's
+  ;; safe to run before it.
+  Perf_focusFirstSpawned(secondWndIds)
+  Perf_resetSamples()
+  Loop, % iterations {
+    Manager_maximizeWindow()
+  }
+  Perf_writeRow("window_maximize", populatedCount, "Manager_maximizeWindow,Window_moveAsync")
   Sleep, 300
 
   ;; Scenario 6: taskbar_toggle — Win+B (Monitor_toggleTaskBar) hides/shows

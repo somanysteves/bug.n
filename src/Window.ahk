@@ -334,15 +334,18 @@ Window_correctedSendCoords(tileX, tileY, tileW, tileH, offsetX, offsetY
 
 ;; Async move with feedforward DWM-frame correction. Doesn't block.
 Window_moveAsync(wndId, x, y, width, height) {
-  Local wndX, wndY, wndW, wndH, offsetX, offsetY, sendX, sendY, sendW, sendH, SWP_FLAGS
+  Local wndX, wndY, wndW, wndH, offsetX, offsetY, sendX, sendY, sendW, sendH, SWP_FLAGS, result
   If Not wndId
     Return 1
+  Perf_start("Window_moveAsync")
   Window_getPosEx(wndId, wndX, wndY, wndW, wndH, offsetX, offsetY)
   Window_correctedSendCoords(x, y, width, height, offsetX, offsetY, sendX, sendY, sendW, sendH)
   SWP_FLAGS := 0x4000 | 0x0004 | 0x0010 | 0x0200    ;; ASYNCWINDOWPOS | NOZORDER | NOACTIVATE | NOOWNERZORDER
-  Return DllCall("SetWindowPos", "Ptr", wndId, "Ptr", 0
+  result := DllCall("SetWindowPos", "Ptr", wndId, "Ptr", 0
       , "Int", sendX, "Int", sendY, "Int", sendW, "Int", sendH
       , "UInt", SWP_FLAGS) ? 0 : 1
+  Perf_end("Window_moveAsync")
+  Return result
 }
 
 Window_restore(wndId = 0) {
