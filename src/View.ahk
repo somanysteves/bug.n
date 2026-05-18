@@ -196,16 +196,18 @@ View_moveToIndex(m, v, n, w) {
 View_moveWindow(i=0, d=0) {
   Local aWndId, m, v
 
+  Perf_start("View_moveWindow")
   WinGet, aWndId, ID, A
   m := Manager_aMonitor
   v := Monitor_#%m%_aView_#1
   If Tiler_isActive(Manager_aMonitor, v) And InStr(Manager_managedWndIds, aWndId ";") And Not (i = 0 And d = 0) And View_#%m%_#%v%_area_#0 And (i <= View_#%m%_#%v%_area_#0) {
     If (i = 0)
       i := Manager_loop(Window_#%aWndId%_area, d, 1, View_#%m%_#%v%_area_#0)
-    Window_move(aWndId, View_#%m%_#%v%_area_#%i%_x, View_#%m%_#%v%_area_#%i%_y, View_#%m%_#%v%_area_#%i%_width, View_#%m%_#%v%_area_#%i%_height)
+    Window_moveAsync(aWndId, View_#%m%_#%v%_area_#%i%_x, View_#%m%_#%v%_area_#%i%_y, View_#%m%_#%v%_area_#%i%_width, View_#%m%_#%v%_area_#%i%_height)
     Window_#%aWndId%_area := i
     Manager_setCursor(aWndId)
   }
+  Perf_end("View_moveWindow")
 }
 
 View_resetTileLayout() {
