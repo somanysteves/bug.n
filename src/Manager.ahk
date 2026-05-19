@@ -955,7 +955,7 @@ Manager_onShellMessage(wParam, lParam) {
         {
           If (Window_#%wndId%_tags & 1 << A_Index - 1)
           {
-            If Manager_isStaleViewBounce(A_Index, prevView, View_#%Manager_aMonitor%_#%currentView%_wndIds, lParam)
+            If Manager_isStaleViewBounce(A_Index, prevView, View_#%Manager_aMonitor%_#%currentView%_wndIds, wndId, lParam)
             {
               Debug_logMessage("DEBUG[3] Skipping stale bounce to view " . A_Index . ": " . lParam . " already on current view " . currentView, 3)
               Break
@@ -1703,12 +1703,20 @@ Manager_syncShouldReportActive(wndId, activeId, isHung) {
 ;; for a window we just made visible on the current view, after
 ;; Manager_hideShow cleared but before HSHELL stopped firing.
 ;;
-;; A bounce is stale when the candidate view is the one we just left
-;; (aView_#2) AND the event source (lParam) already lives in the
-;; current view's wndIds. Match the surrounding code's "lParam ;"
-;; pattern (see Manager_managedWndIds check below the block).
-Manager_isStaleViewBounce(candidateView, prevView, currentViewWndIds, lParam) {
-  Return (candidateView = prevView) And InStr(currentViewWndIds, lParam ";")
+;; Stale requires all three:
+;;   1. candidate view equals the one we just left (aView_#2),
+;;   2. the new-hidden window sync flagged IS the shell event source
+;;      (wndId == lParam) — otherwise the event is unrelated to what
+;;      sync found and tells us nothing about whether to switch,
+;;   3. the event source already lives in the current view's wndIds.
+;;
+;; Wrap currentViewWndIds with ";" delimiters so the membership test
+;; can't match a suffix substring (e.g. lParam=7890 falsely matching
+;; "67890;").
+Manager_isStaleViewBounce(candidateView, prevView, currentViewWndIds, wndId, lParam) {
+  Return (candidateView = prevView)
+    And (wndId = lParam)
+    And InStr(";" . currentViewWndIds, ";" . lParam . ";")
 }
 
 ;; @todo: This constantly tries to re-add windows that are never going to be manageable.
