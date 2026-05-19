@@ -949,10 +949,17 @@ Manager_onShellMessage(wParam, lParam) {
       If (Config_onActiveHiddenWnds = "view")
       {  ;; ... change the view to show the first hidden window
         wndId := SubStr(wndIds, 1, InStr(wndIds, ";") - 1)
+        currentView := Monitor_#%Manager_aMonitor%_aView_#1
+        prevView    := Monitor_#%Manager_aMonitor%_aView_#2
         Loop, % Config_viewCount
         {
           If (Window_#%wndId%_tags & 1 << A_Index - 1)
           {
+            If Manager_isStaleViewBounce(A_Index, prevView, View_#%Manager_aMonitor%_#%currentView%_wndIds, lParam)
+            {
+              Debug_logMessage("DEBUG[3] Skipping stale bounce to view " . A_Index . ": " . lParam . " already on current view " . currentView, 3)
+              Break
+            }
             Debug_logMessage("DEBUG[3] Switching views because " . wndId . " is considered hidden and active", 3)
             ;; A newly created window defines the active monitor, if it is visible.
             Manager_aMonitor := Window_#%wndId%_monitor
@@ -1688,6 +1695,20 @@ Manager_initial_sync(doRestore) {
 ;; matches the loop's intent ("was brought into focus by something").
 Manager_syncShouldReportActive(wndId, activeId, isHung) {
   Return (wndId = activeId) And (Not isHung)
+}
+
+;; Pure classifier for the Config_onActiveHiddenWnds="view" branch of
+;; Manager_onShellMessage (#43). Reports True when a candidate view
+;; switch is a stale echo of our own reveal — the shell event arrived
+;; for a window we just made visible on the current view, after
+;; Manager_hideShow cleared but before HSHELL stopped firing.
+;;
+;; A bounce is stale when the candidate view is the one we just left
+;; (aView_#2) AND the event source (lParam) already lives in the
+;; current view's wndIds. Match the surrounding code's "lParam ;"
+;; pattern (see Manager_managedWndIds check below the block).
+Manager_isStaleViewBounce(candidateView, prevView, currentViewWndIds, lParam) {
+  Return (candidateView = prevView) And InStr(currentViewWndIds, lParam ";")
 }
 
 ;; @todo: This constantly tries to re-add windows that are never going to be manageable.
