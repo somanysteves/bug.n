@@ -341,6 +341,11 @@ Manager_getWindowInfo() {
   WinGet, aWndId, ID, A
   DetectHiddenWindows, %detectHiddenWnds%
   isHidden := Window_getHidden(aWndId, aWndClass, aWndTitle)
+  ;; Window_getHidden leaves wndTitle empty for visible windows; debug helper
+  ;; needs it for display, so fetch it directly (blocking is fine — manual
+  ;; hotkey, not a shell-event hot path).
+  If Not aWndTitle
+    WinGetTitle, aWndTitle, ahk_id %aWndId%
   WinGet, aWndPName, ProcessName, ahk_id %aWndId%
   WinGet, aWndPId, PID, ahk_id %aWndId%
   WinGet, aWndStyle, Style, ahk_id %aWndId%
