@@ -338,26 +338,38 @@ Return
 ;; Manager_onWindowCreateOrShow so it's testable without a real WinEvent
 ;; hook firing.
 ;;
-;;   expectedHide=True            -> "expected"  (consume the flag; bug.n
-;;                                                hid it for a view switch)
 ;;   not in Manager_managedWndIds -> "ignore"    (third-party window we
 ;;                                                never tracked)
+;;   expectedHide=True            -> "expected"  (consume the flag; bug.n
+;;                                                hid it for a view switch)
 ;;   managed, no flag             -> "queue"     (owning app hid it; the
 ;;                                                deferred handler will
 ;;                                                unmanage on next tick)
 ;;
-;; Side effects: on "expected" the flag is cleared. On "queue" hwndStr is
-;; appended to Manager_pendingHideWndIds. Caller is responsible for arming
-;; Manager_winHideDeferred when "queue" is returned.
-Manager_classifyHideEvent(hwndStr) {
+;; Side effects: on "expected" the flag is cleared. On "queue" the
+;; canonical stored key is appended to Manager_pendingHideWndIds. Caller
+;; is responsible for arming Manager_winHideDeferred when "queue" is
+;; returned.
+;;
+;; Manager_isManaged canonicalizes the input (any numeric form: hex
+;; string, decimal string, or integer) to whatever format
+;; Manager_managedWndIds stored at manage time — hex on most code paths,
+;; decimal on others (see Manager_isManaged comment block,
+;; Manager.ahk:880-889). Skipping this normalization means a HIDE event
+;; carrying a hex string would silently miss a decimal-stored entry (or
+;; vice-versa) and the ghost would persist. Caught by Copilot review on
+;; PR #58 and locked in by test_Manager_classifyHideEvent.ahk.
+Manager_classifyHideEvent(hwnd) {
   Global
-  If Window_#%hwndStr%_expectedHide {
-    Window_#%hwndStr%_expectedHide := False
+  Local key
+  key := Manager_isManaged(hwnd)
+  If Not key
+    Return "ignore"
+  If Window_#%key%_expectedHide {
+    Window_#%key%_expectedHide := False
     Return "expected"
   }
-  If Not InStr(Manager_managedWndIds, hwndStr ";")
-    Return "ignore"
-  Manager_pendingHideWndIds .= hwndStr ";"
+  Manager_pendingHideWndIds .= key ";"
   Return "queue"
 }
 
@@ -1295,8 +1307,10 @@ Manager_onWindowCreateOrShow(hWinEventHook, event, hwnd, idObject, idChild, idEv
   If (event = 0x8003) {
     ;; EVENT_OBJECT_HIDE: distinguish our hide (view-switching) from an
     ;; app hiding itself. See Manager_classifyHideEvent for the decision
-    ;; matrix; this branch is just dispatch.
-    If (Manager_classifyHideEvent(Format("0x{:x}", hwnd)) = "queue")
+    ;; matrix; this branch is just dispatch. Raw hwnd flows through —
+    ;; Manager_isManaged inside the classifier canonicalizes against the
+    ;; stored format (hex or decimal).
+    If (Manager_classifyHideEvent(hwnd) = "queue")
       SetTimer, Manager_winHideDeferred, -50
     Return
   }
