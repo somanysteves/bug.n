@@ -238,18 +238,17 @@ Manager_closeWindow() {
 
   mods := Manager_modifiersFromHotkey(A_ThisHotkey)
   WinGet, aWndId, ID, A
-  If Window_isProg(aWndId) {
+  If Window_isProg(aWndId)
     Window_close(aWndId)
-    ;; If the user closed the window with a modifier hotkey (e.g. Win+Shift+C),
-    ;; Windows routes the eventual WM_KEYUP for those modifiers to the focused
-    ;; window. With the window gone, the up events are swallowed and the OS
-    ;; thinks the modifiers are still held -- subsequent hotkeys silently fail
-    ;; to match until the user taps each modifier. SendInput {key up} is a
-    ;; no-op if the key is already up, so this is safe to fire unconditionally
-    ;; for the modifiers in this hotkey.
-    If mods
-      SendInput %mods%
-  }
+  ;; Release any modifier keys that were held for this hotkey. Windows routes
+  ;; WM_KEYUP for modifiers to the focused window; if that window just closed
+  ;; (or was never closeable), the up events are swallowed and the OS treats
+  ;; the modifiers as still held -- subsequent keypresses land as Win+key or
+  ;; Shift+key instead of plain keys until each modifier is physically tapped.
+  ;; SendInput {key up} is a no-op for keys already up, so this is safe even
+  ;; when Window_isProg returned 0 (desktop, bar, etc.) and no close occurred.
+  If mods
+    SendInput %mods%
 }
 
 ; Asynchronous management of various WM properties.
@@ -834,7 +833,9 @@ Manager_onShellMessage(wParam, lParam) {
     }
   }
 
+  t0 := A_TickCount
   wndIsHidden := Window_getHidden(lParam, wndClass, wndTitle)
+  Debug_logMessage("DEBUG[3] Manager_onShellMessage: getHidden=" . wndIsHidden . " ms=" . (A_TickCount - t0), 3)
   If wndIsHidden {
     ;; If there is no window class or title, it is assumed that the window is not identifiable.
     ;;   The problem was, that i. a. claws-mail triggers Manager_sync, but the application window
@@ -922,9 +923,9 @@ Manager_onShellMessage(wParam, lParam) {
     ;; create, untile on destroy. Brief flicker for genuine phantoms is
     ;; preferable to a 350 ms latency penalty on every real window event.
     wndIds := ""
+    t1 := A_TickCount
     a := isChanged := Manager_sync(wndIds)
-    If wndIds
-      isChanged := False
+    Debug_logMessage("DEBUG[3] Manager_onShellMessage: sync ms=" . (A_TickCount - t1) . " isChanged=" . isChanged . " wndIds=" . wndIds, 3)
 
     If isChanged
     {
@@ -1175,11 +1176,15 @@ Manager_registerShellHook() {
 }
 ;; SKAN: How to Hook on to Shell to receive its messages? (http://www.autohotkey.com/forum/viewtopic.php?p=123323#123323)
 
-;; EVENT_OBJECT_CREATE backstop for HSHELL_WINDOWCREATED that the legacy
-;; RegisterShellHookWindow drops under load (#19). Global hook (no PID filter)
+;; EVENT_OBJECT_CREATE and EVENT_OBJECT_SHOW backstop for HSHELL_WINDOWCREATED
+;; that the legacy RegisterShellHookWindow drops under load (#19). Some apps
+;; (e.g. Teams) create their main window hidden and show it later; CREATE fires
+;; while the window is invisible so WinGet-List misses it, but SHOW fires when
+;; it becomes visible and gives us a second chance. Global hook (no PID filter)
 ;; — see Manager_registerTaskBarHook for the load-on-message-thread caveat.
-;; The bench is the gate: if pass rate worsens with this hook installed, the
-;; volume is too high and we should reconsider.
+;; WINEVENT_SKIPOWNPROCESS ensures bug.n's own hide/show (view switching) does
+;; not feed back into the deferred sync. The bench is the gate: if pass rate
+;; worsens with this hook installed, the volume is too high.
 Manager_registerWindowCreateHook() {
   Global Manager_winCreateHook, Manager_winCreateHookCb
 
@@ -1187,8 +1192,8 @@ Manager_registerWindowCreateHook() {
     Manager_winCreateHookCb := RegisterCallback("Manager_onWindowCreate", "F")
 
   Manager_winCreateHook := DllCall("SetWinEventHook"
-    , "UInt", 0x8000          ;; EVENT_OBJECT_CREATE
-    , "UInt", 0x8000
+    , "UInt", 0x8000          ;; eventMin: EVENT_OBJECT_CREATE
+    , "UInt", 0x8002          ;; eventMax: EVENT_OBJECT_SHOW (DESTROY=0x8001 filtered in callback)
     , "Ptr",  0               ;; hmodWinEventProc (NULL = out-of-context)
     , "Ptr",  Manager_winCreateHookCb
     , "UInt", 0               ;; idProcess (0 = all processes)
@@ -1203,6 +1208,9 @@ Manager_registerWindowCreateHook() {
 ;; windows during a coexistence-mutex window.
 Manager_onWindowCreate(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, dwmsEventTime) {
   Global Manager_isBench
+  ;; Only CREATE (0x8000) and SHOW (0x8002) — skip DESTROY (0x8001).
+  If (event != 0x8000 And event != 0x8002)
+    Return
   ;; Window-level events only — skip controls, menus, accessibility children.
   If (idObject != 0 Or idChild != 0)
     Return
@@ -1498,11 +1506,14 @@ Manager_saveWindowState(filename, nm, nv) {
   StringSplit, allWndId, allWndIds, `;
   detectHidden := A_DetectHiddenWindows
   DetectHiddenWindows, On
+  Debug_logMessage("DEBUG[3] Manager_saveWindowState: loop start wndCount=" . allWndId0, 3)
   Loop, % allWndId0 {
     wndId := allWndId%A_Index%
     WinGet, wndPName, ProcessName, ahk_id %wndId%
     ; Include title for informative reasons.
-    WinGetTitle, title, ahk_id %wndId%
+    t0 := A_TickCount
+    title := Window_getTitleNonBlocking(wndId)
+    Debug_logMessage("DEBUG[3] Manager_saveWindowState: getTitleNonBlocking wndId=" . wndId . " ms=" . (A_TickCount - t0), 3)
 
     ; wndId;processName;Tags;Floating;Decorated;HideTitle;Managed;Title
 
