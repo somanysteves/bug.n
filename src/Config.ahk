@@ -100,7 +100,16 @@ Config_init() {
   Config_rule_#17  := "MozillaDialogClass;.*;;1;0;0;1;1;0;"
   Config_rule_#18  := "ApplicationFrameWindow;.*Edge;;1;0;0;0;1;0;"
   Config_rule_#19  := "ZPPTEnhanceLoginMainWindowClassEx;.*;;0;0;0;1;1;0;"
-  Config_ruleCount := 19  ;; This variable has to be set to the total number of active rules above.
+  ;; PowerToys Command Palette and other WinUI3 popups present as top-level
+  ;; windows that briefly show themselves (via Win+Alt+Space or similar) and
+  ;; are then hidden by the owning app — bug.n would tag the brief SHOW,
+  ;; PT would re-hide before we noticed, and the now-invisible window would
+  ;; occupy a tile slot on the next view-switch arrange ("left half empty,
+  ;; right half split 50/50" — fix branch). Refuse to manage them at the
+  ;; rule layer; Manager_applyRules during state restore (Manager.ahk:1487)
+  ;; will also untag any existing ghost on next bug.n restart.
+  Config_rule_#20  := "WinUIDesktopWin32WindowClass;.*;;0;0;0;1;1;1;"
+  Config_ruleCount := 20  ;; This variable has to be set to the total number of active rules above.
 
   ;; Configuration management
   Config_autoSaveSession := "auto"                ;; "off" | "auto" | "ask"

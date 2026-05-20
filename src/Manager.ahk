@@ -60,6 +60,7 @@ Manager_init()
   Bar_hideTitleWndIds      := ""
   Manager_allWndIds        := ""
   Manager_managedWndIds    := ""
+  Manager_pendingHideWndIds := ""
   Manager_initial_sync(doRestore)
 
   Bar_updateStatus()
@@ -154,6 +155,7 @@ Manager_cleanup()
     Manager_winCreateOrShowHook := 0
   }
   SetTimer, Manager_winCreateOrShowDeferred, Off
+  SetTimer, Manager_winHideDeferred, Off
 
   ;; Cancel any deferred sync the hook had armed before we unhooked. Without
   ;; this, an in-flight one-shot timer would fire mid-teardown and
@@ -326,6 +328,80 @@ Manager_winCreateOrShowDeferred:
   winCreateIsChanged := Manager_sync(winCreateSyncDummy)
   If winCreateIsChanged
   {
+    If Config_dynamicTiling
+      View_arrange(Manager_aMonitor, Monitor_#%Manager_aMonitor%_aView_#1)
+    Bar_updateView(Manager_aMonitor, Monitor_#%Manager_aMonitor%_aView_#1)
+  }
+Return
+
+;; Decision matrix for an EVENT_OBJECT_HIDE arrival, factored out of
+;; Manager_onWindowCreateOrShow so it's testable without a real WinEvent
+;; hook firing.
+;;
+;;   not in Manager_managedWndIds -> "ignore"    (third-party window we
+;;                                                never tracked)
+;;   expectedHide=True            -> "expected"  (consume the flag; bug.n
+;;                                                hid it for a view switch)
+;;   managed, no flag             -> "queue"     (owning app hid it; the
+;;                                                deferred handler will
+;;                                                unmanage on next tick)
+;;
+;; Side effects: on "expected" the flag is cleared. On "queue" the
+;; canonical stored key is appended to Manager_pendingHideWndIds. Caller
+;; is responsible for arming Manager_winHideDeferred when "queue" is
+;; returned.
+;;
+;; Manager_isManaged canonicalizes the input (any numeric form: hex
+;; string, decimal string, or integer) to whatever format
+;; Manager_managedWndIds stored at manage time — hex on most code paths,
+;; decimal on others (see Manager_isManaged comment block,
+;; Manager.ahk:880-889). Skipping this normalization means a HIDE event
+;; carrying a hex string would silently miss a decimal-stored entry (or
+;; vice-versa) and the ghost would persist. Caught by Copilot review on
+;; PR #58 and locked in by test_Manager_classifyHideEvent.ahk.
+Manager_classifyHideEvent(hwnd) {
+  Global
+  Local key
+  key := Manager_isManaged(hwnd)
+  If Not key
+    Return "ignore"
+  If Window_#%key%_expectedHide {
+    Window_#%key%_expectedHide := False
+    Return "expected"
+  }
+  Manager_pendingHideWndIds .= key ";"
+  Return "queue"
+}
+
+;; Drain managed windows whose owning app hid them (PowerToys Command
+;; Palette dismissal, etc.). Manager_onWindowCreateOrShow queues them
+;; when EVENT_OBJECT_HIDE fires without a matching expectedHide flag.
+;; If we don't untag, View_getTiledWndIds keeps counting the now-invisible
+;; window and Tiler_layoutTiles allocates it a tile slot that renders empty.
+Manager_winHideDeferred:
+  Critical Off
+  winHideQueue := Manager_pendingHideWndIds
+  Manager_pendingHideWndIds := ""
+  StringTrimRight, winHideQueue, winHideQueue, 1
+  winHideDirty := False
+  Loop, PARSE, winHideQueue, `;
+  {
+    If Not A_LoopField
+      Continue
+    ;; Re-verify: still hidden (didn't bounce back), still managed
+    ;; (no concurrent unmanage), and not hung (don't unmanage a hung
+    ;; window — IsWindowVisible can flicker on resume).
+    If DllCall("IsWindowVisible", "Ptr", A_LoopField)
+      Continue
+    If Not InStr(Manager_managedWndIds, A_LoopField ";")
+      Continue
+    If Window_isHung(A_LoopField)
+      Continue
+    Debug_logMessage("DEBUG[1] Manager_winHideDeferred: unmanage " A_LoopField " (app-side hide)", 1)
+    Manager_unmanage(A_LoopField)
+    winHideDirty := True
+  }
+  If winHideDirty {
     If Config_dynamicTiling
       View_arrange(Manager_aMonitor, Monitor_#%Manager_aMonitor%_aView_#1)
     Bar_updateView(Manager_aMonitor, Monitor_#%Manager_aMonitor%_aView_#1)
@@ -1193,7 +1269,7 @@ Manager_registerWindowCreateOrShowHook() {
 
   Manager_winCreateOrShowHook := DllCall("SetWinEventHook"
     , "UInt", 0x8000          ;; eventMin: EVENT_OBJECT_CREATE
-    , "UInt", 0x8002          ;; eventMax: EVENT_OBJECT_SHOW (DESTROY=0x8001 filtered in callback)
+    , "UInt", 0x8003          ;; eventMax: EVENT_OBJECT_HIDE (DESTROY=0x8001 filtered in callback)
     , "Ptr",  0               ;; hmodWinEventProc (NULL = out-of-context)
     , "Ptr",  Manager_winCreateOrShowHookCb
     , "UInt", 0               ;; idProcess (0 = all processes)
@@ -1207,9 +1283,9 @@ Manager_registerWindowCreateOrShowHook() {
 ;; gate in Manager_onShellMessage so production doesn't manage bench
 ;; windows during a coexistence-mutex window.
 Manager_onWindowCreateOrShow(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, dwmsEventTime) {
-  Global Manager_isBench
-  ;; Only CREATE (0x8000) and SHOW (0x8002) — skip DESTROY (0x8001).
-  If (event != 0x8000 And event != 0x8002)
+  Global Manager_isBench, Manager_pendingHideWndIds
+  ;; CREATE (0x8000), SHOW (0x8002), HIDE (0x8003). Skip DESTROY (0x8001).
+  If (event != 0x8000 And event != 0x8002 And event != 0x8003)
     Return
   ;; Window-level events only — skip controls, menus, accessibility children.
   If (idObject != 0 Or idChild != 0)
@@ -1228,7 +1304,17 @@ Manager_onWindowCreateOrShow(hWinEventHook, event, hwnd, idObject, idChild, idEv
       Return
     }
   }
-  ;; Defer; bursts coalesce, re-entrancy avoided. Negative interval = one-shot.
+  If (event = 0x8003) {
+    ;; EVENT_OBJECT_HIDE: distinguish our hide (view-switching) from an
+    ;; app hiding itself. See Manager_classifyHideEvent for the decision
+    ;; matrix; this branch is just dispatch. Raw hwnd flows through —
+    ;; Manager_isManaged inside the classifier canonicalizes against the
+    ;; stored format (hex or decimal).
+    If (Manager_classifyHideEvent(hwnd) = "queue")
+      SetTimer, Manager_winHideDeferred, -50
+    Return
+  }
+  ;; CREATE or SHOW. Defer; bursts coalesce, re-entrancy avoided.
   SetTimer, Manager_winCreateOrShowDeferred, -50
 }
 
