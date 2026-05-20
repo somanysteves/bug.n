@@ -71,7 +71,7 @@ Manager_init()
   }
 
   Manager_registerShellHook()
-  Manager_registerWindowCreateHook()
+  Manager_registerWindowCreateOrShowHook()
   Manager_registerTaskBarHook()
   SetTimer, Manager_doMaintenance, %Config_maintenanceInterval%
   SetTimer, Bar_loop, %Config_readinInterval%
@@ -149,11 +149,11 @@ Manager_cleanup()
     DllCall("UnhookWinEvent", "Ptr", Manager_taskBarHook)
     Manager_taskBarHook := 0
   }
-  If Manager_winCreateHook {
-    DllCall("UnhookWinEvent", "Ptr", Manager_winCreateHook)
-    Manager_winCreateHook := 0
+  If Manager_winCreateOrShowHook {
+    DllCall("UnhookWinEvent", "Ptr", Manager_winCreateOrShowHook)
+    Manager_winCreateOrShowHook := 0
   }
-  SetTimer, Manager_winCreateDeferred, Off
+  SetTimer, Manager_winCreateOrShowDeferred, Off
 
   ;; Cancel any deferred sync the hook had armed before we unhooked. Without
   ;; this, an in-flight one-shot timer would fire mid-teardown and
@@ -317,10 +317,10 @@ Manager_taskBarSyncDeferred:
   }
 Return
 
-;; Deferred handler for Manager_onWindowCreate (#19). Per-burst Manager_sync
+;; Deferred handler for Manager_onWindowCreateOrShow (#19). Per-burst Manager_sync
 ;; instead of per-event Manager_manage — sync's enumeration is idempotent
 ;; on Manager_managedWndIds so duplicate adopts are no-ops.
-Manager_winCreateDeferred:
+Manager_winCreateOrShowDeferred:
   Critical Off
   winCreateSyncDummy := ""
   winCreateIsChanged := Manager_sync(winCreateSyncDummy)
@@ -1185,28 +1185,28 @@ Manager_registerShellHook() {
 ;; WINEVENT_SKIPOWNPROCESS ensures bug.n's own hide/show (view switching) does
 ;; not feed back into the deferred sync. The bench is the gate: if pass rate
 ;; worsens with this hook installed, the volume is too high.
-Manager_registerWindowCreateHook() {
-  Global Manager_winCreateHook, Manager_winCreateHookCb
+Manager_registerWindowCreateOrShowHook() {
+  Global Manager_winCreateOrShowHook, Manager_winCreateOrShowHookCb
 
-  If Not Manager_winCreateHookCb
-    Manager_winCreateHookCb := RegisterCallback("Manager_onWindowCreate", "F")
+  If Not Manager_winCreateOrShowHookCb
+    Manager_winCreateOrShowHookCb := RegisterCallback("Manager_onWindowCreateOrShow", "F")
 
-  Manager_winCreateHook := DllCall("SetWinEventHook"
+  Manager_winCreateOrShowHook := DllCall("SetWinEventHook"
     , "UInt", 0x8000          ;; eventMin: EVENT_OBJECT_CREATE
     , "UInt", 0x8002          ;; eventMax: EVENT_OBJECT_SHOW (DESTROY=0x8001 filtered in callback)
     , "Ptr",  0               ;; hmodWinEventProc (NULL = out-of-context)
-    , "Ptr",  Manager_winCreateHookCb
+    , "Ptr",  Manager_winCreateOrShowHookCb
     , "UInt", 0               ;; idProcess (0 = all processes)
     , "UInt", 0               ;; idThread (0 = all threads)
     , "UInt", 2)              ;; WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS
-  Debug_logMessage("DEBUG[1] Manager_registerWindowCreateHook: hook=" . Manager_winCreateHook, 1)
+  Debug_logMessage("DEBUG[1] Manager_registerWindowCreateOrShowHook: hook=" . Manager_winCreateOrShowHook, 1)
 }
 
 ;; WinEventHook callback. Filter cheaply, defer real work via SetTimer to
 ;; avoid Manager_manage on the message-thread hot path. Mirrors the mutex
 ;; gate in Manager_onShellMessage so production doesn't manage bench
 ;; windows during a coexistence-mutex window.
-Manager_onWindowCreate(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, dwmsEventTime) {
+Manager_onWindowCreateOrShow(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, dwmsEventTime) {
   Global Manager_isBench
   ;; Only CREATE (0x8000) and SHOW (0x8002) — skip DESTROY (0x8001).
   If (event != 0x8000 And event != 0x8002)
@@ -1229,7 +1229,7 @@ Manager_onWindowCreate(hWinEventHook, event, hwnd, idObject, idChild, idEventThr
     }
   }
   ;; Defer; bursts coalesce, re-entrancy avoided. Negative interval = one-shot.
-  SetTimer, Manager_winCreateDeferred, -50
+  SetTimer, Manager_winCreateOrShowDeferred, -50
 }
 
 Manager_resetMonitorConfiguration() {
