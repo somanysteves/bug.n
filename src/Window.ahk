@@ -136,11 +136,20 @@ Window_getPosEx(hWindow, ByRef X = "", ByRef Y = "", ByRef Width = "", ByRef Hei
 }
 ;; unknown: WinGetPosEx (https://autohotkey.com/boards/viewtopic.php?t=3392; 2016-01-18: retrieved "Error 404 - File not found")
 
+;; Set Window_#%wndId%_expectedHide=True so the EVENT_OBJECT_HIDE callback
+;; (Manager_onWindowCreateOrShow) can tell our hide apart from an app-side
+;; one. Only set when the window was actually visible — a no-op hide on an
+;; already-hidden window (e.g. PowerToys Command Palette while dismissed)
+;; produces no HIDE event, and leaving the flag stale would cause the next
+;; genuine app-side hide to be misattributed to us.
 Window_hide(wndId) {
+  Global
   If Window_isHung(wndId) {
     Debug_logMessage("DEBUG[2] Window_hide: Potentially hung window " . wndId, 2)
     Return, 1
   } Else {
+    If DllCall("IsWindowVisible", "Ptr", wndId)
+      Window_#%wndId%_expectedHide := True
     WinHide, ahk_id %wndId%
     Return, 0
   }
@@ -153,7 +162,12 @@ Window_hide(wndId) {
 ;; accumulates into the user-visible "blank desktop" gap. Safe on hung
 ;; windows — ShowWindowAsync queues the message rather than waiting on
 ;; the proc, so we skip the Window_isHung check.
+;;
+;; expectedHide tracking — see Window_hide.
 Window_hideAsync(wndId) {
+  Global
+  If DllCall("IsWindowVisible", "Ptr", wndId)
+    Window_#%wndId%_expectedHide := True
   Return DllCall("ShowWindowAsync", "Ptr", wndId, "Int", 0) ? 0 : 1    ;; SW_HIDE = 0
 }
 
