@@ -241,13 +241,16 @@ Window_isPopup(wndId) {
 }
 
 Window_isProg(wndId) {
+  Local wndClass, wndTitle
   WinGetClass, wndClass, ahk_id %wndId%
-  WinGetTitle, wndTitle, ahk_id %wndId%
-  If Not (wndClass = "Progman") And Not (wndClass = "WorkerW") And Not (wndClass = "DesktopBackgroundClass")
-     And Not (wndClass = "AutoHotkeyGui" And SubStr(wndTitle, 1, 10) = "bug.n_BAR_")
-    Return, wndId
-  Else
+  If (wndClass = "Progman") Or (wndClass = "WorkerW") Or (wndClass = "DesktopBackgroundClass")
     Return, 0
+  If (wndClass = "AutoHotkeyGui") {
+    wndTitle := Window_getTitleNonBlocking(wndId)
+    If (SubStr(wndTitle, 1, 10) = "bug.n_BAR_")
+      Return, 0
+  }
+  Return, wndId
 }
 
 Window_maximize(wndId) {
