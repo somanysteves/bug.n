@@ -1480,7 +1480,7 @@ Manager__restoreWindowState(filename) {
   ; Scan through all defined windows. Create a candidate set of windows based on whether the properties of existing windows match.
   Loop, % (widx - 1) {
     StringSplit, items, wnds%A_Index%, `;
-    If (items0 < 9) {
+    If (items0 < 8) {
       Debug_logMessage("Window '" . wnds%A_Index% . "' could not be processed due to parse error", 0)
       Continue
     }
@@ -1579,7 +1579,7 @@ Manager_saveState() {
 }
 
 Manager_saveWindowState(filename, nm, nv) {
-  Local allWndId0, allWndIds, detectHidden, wndPName, title, text, monitor, wndId, view, isManaged, isTitleHidden
+  Local allWndId0, allWndIds, detectHidden, wndPName, text, monitor, wndId, view, isManaged, isTitleHidden
 
   text := "; bug.n - tiling window management`n; @version " VERSION "`n`n"
 
@@ -1596,12 +1596,8 @@ Manager_saveWindowState(filename, nm, nv) {
   Loop, % allWndId0 {
     wndId := allWndId%A_Index%
     WinGet, wndPName, ProcessName, ahk_id %wndId%
-    ; Include title for informative reasons.
-    t0 := A_TickCount
-    title := Window_getTitleNonBlocking(wndId)
-    Debug_logMessage("DEBUG[3] Manager_saveWindowState: getTitleNonBlocking wndId=" . wndId . " ms=" . (A_TickCount - t0), 3)
 
-    ; wndId;processName;Tags;Floating;Decorated;HideTitle;Managed;Title
+    ; wndId;processName;Monitor;Tags;Floating;Decorated;HideTitle;Managed
 
     isManaged := InStr(Manager_managedWndIds, wndId . ";")
     isTitleHidden := InStr(Bar_hideTitleWndIds, wndId . ";")
@@ -1611,7 +1607,7 @@ Manager_saveWindowState(filename, nm, nv) {
       text .= Window_#%wndId%_monitor . ";" . Window_#%wndId%_tags . ";" . Window_#%wndId%_isFloating . ";" . Window_#%wndId%_isDecorated . ";"
     Else
       text .= ";;;;"
-    text .= isTitleHidden . ";" . isManaged . ";" . title . "`n"
+    text .= isTitleHidden . ";" . isManaged . "`n"
   }
   DetectHiddenWindows, %detectHidden%
 
