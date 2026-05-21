@@ -1427,11 +1427,31 @@ Manager_restoreWindowBorders()
   }
 }
 
+;; Parses one persisted "Window ..." line from _WindowState.ini into its
+;; columns. Returns True if the line has >= 8 fields, False otherwise.
+;; Accepts both the current 8-column format and the legacy 9-column format
+;; (which carried a trailing title field that restore never read back).
+Manager__parseSavedWindowLine(line, ByRef wndId, ByRef processName, ByRef monitor, ByRef tags, ByRef isFloating, ByRef isDecorated, ByRef hideTitle, ByRef isManaged) {
+  Local items0, items1, items2, items3, items4, items5, items6, items7, items8
+  StringSplit, items, line, `;
+  If (items0 < 8)
+    Return False
+  wndId       := items1
+  processName := items2
+  monitor     := items3
+  tags        := items4
+  isFloating  := items5
+  isDecorated := items6
+  hideTitle   := items7
+  isManaged   := items8
+  Return True
+}
+
 ;; Restore previously saved window state.
 ;; If the state is completely different, this function won't do much. However, if restoring from a crash
 ;; or simply restarting bug.n, it should completely recover the window state.
 Manager__restoreWindowState(filename) {
-  Local vidx, widx, i, j, m, v, candidate_set, detectHidden, view_set, excluded_view_set, view_m0, view_v0, view_list0, wnds0, items0, wndPName, view_var, isManaged, isFloating, isDecorated, hideTitle, ruleIsManaged, ruleM, ruleTags, ruleIsFloating, ruleIsDecorated, ruleHideTitle, ruleAction
+  Local vidx, widx, i, j, m, v, candidate_set, detectHidden, view_set, excluded_view_set, view_m0, view_v0, view_list0, wnds0, items0, wndId, expectedPName, wndPName, view_var, isManaged, isFloating, isDecorated, hideTitle, ruleIsManaged, ruleM, ruleTags, ruleIsFloating, ruleIsDecorated, ruleHideTitle, ruleAction
 
   If Not FileExist(filename)
     Return
@@ -1479,22 +1499,17 @@ Manager__restoreWindowState(filename) {
 
   ; Scan through all defined windows. Create a candidate set of windows based on whether the properties of existing windows match.
   Loop, % (widx - 1) {
-    StringSplit, items, wnds%A_Index%, `;
-    If (items0 < 8) {
+    If Not Manager__parseSavedWindowLine(wnds%A_Index%, wndId, expectedPName, m, v, isFloating, isDecorated, hideTitle, isManaged) {
       Debug_logMessage("Window '" . wnds%A_Index% . "' could not be processed due to parse error", 0)
       Continue
     }
 
-    i := 1
-    i := items%i%
-    j := 2
-
     detectHidden := A_DetectHiddenWindows
     DetectHiddenWindows, On
-    WinGet, wndPName, ProcessName, ahk_id %i%
+    WinGet, wndPName, ProcessName, ahk_id %wndId%
     DetectHiddenWindows, %detectHidden%
-    If Not ( items%j% = wndPName ) {
-      Debug_logMessage("Window ahk_id " . i . " process '" . wndPName . "' doesn't match expected '" . items%j% . "', forgetting this window", 0)
+    If Not ( expectedPName = wndPName ) {
+      Debug_logMessage("Window ahk_id " . wndId . " process '" . wndPName . "' doesn't match expected '" . expectedPName . "', forgetting this window", 0)
       Continue
     }
 
@@ -1502,44 +1517,29 @@ Manager__restoreWindowState(filename) {
     ;; DetectHiddenWindows must be On so WinGetClass/WinGetTitle inside Manager_applyRules
     ;; can read the class and title of windows that bug.n has hidden on inactive views.
     DetectHiddenWindows, On
-    Manager_applyRules(i, ruleIsManaged, ruleM, ruleTags, ruleIsFloating, ruleIsDecorated, ruleHideTitle, ruleAction)
+    Manager_applyRules(wndId, ruleIsManaged, ruleM, ruleTags, ruleIsFloating, ruleIsDecorated, ruleHideTitle, ruleAction)
     DetectHiddenWindows, %detectHidden%
     If Not ruleIsManaged {
-      Debug_logMessage("Window ahk_id " . i . " excluded by current rules during state restore, skipping.", 0)
+      Debug_logMessage("Window ahk_id " . wndId . " excluded by current rules during state restore, skipping.", 0)
       Continue
     }
 
-    j := 8
-    isManaged := items%j%
-
     ; If Managed
-    If ( items%j% ) {
-      If ( InStr(view_set, i) = 0) {
-        If ( InStr(excluded_view_set, i) )
-          Debug_logMessage("Window ahk_id " . i . " is being ignored because it no longer belongs to an active view", 0)
+    If ( isManaged ) {
+      If ( InStr(view_set, wndId) = 0) {
+        If ( InStr(excluded_view_set, wndId) )
+          Debug_logMessage("Window ahk_id " . wndId . " is being ignored because it no longer belongs to an active view", 0)
         Else
-          Debug_logMessage("Window ahk_id " . i . " is being ignored because it doesn't exist in any views", 0)
+          Debug_logMessage("Window ahk_id " . wndId . " is being ignored because it doesn't exist in any views", 0)
         Continue
       }
     }
 
     ; Set up the window.
+    Manager__setWinProperties(wndId, isManaged, m, v, isDecorated, isFloating, hideTitle )
+    ;Window_hide(wndId)
 
-    j := 3
-    m := items%j%
-    j := 4
-    v := items%j%
-    j := 5
-    isFloating := items%j%
-    j := 6
-    isDecorated := items%j%
-    j := 7
-    hideTitle := items%j%
-
-    Manager__setWinProperties(i, isManaged, m, v, isDecorated, isFloating, hideTitle )
-    ;Window_hide(i)
-
-    candidate_set := candidate_set . i . ";"
+    candidate_set := candidate_set . wndId . ";"
   }
 
   ;Debug_logMessage("candidate_set: " . candidate_set, 1)
