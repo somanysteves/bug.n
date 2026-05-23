@@ -9,7 +9,7 @@ SetBatchLines, -1
 TEST_PASS_COUNT := 0
 TEST_FAIL_COUNT := 0
 
-Yunit.Use(CIReporter).Test(TestTiler, TestManagerLoop, TestViewShuffleWindow, TestManagerDisplayChange, TestManagerUrgentView, TestConfigUrgentPalette, TestManagerSync, TestHelp, TestBarSetViewHighlight, TestManagerBarTitleAction, TestWindowCorrectedSendCoords, TestWindowGetTitleNonBlocking, TestManagerModifiersFromHotkey, TestViewCycleDrain, TestManagerStaleBounce, TestManagerClassifyHideEvent, TestManagerParseSavedWindowLine)
+Yunit.Use(CIReporter).Test(TestTiler, TestManagerLoop, TestViewShuffleWindow, TestManagerDisplayChange, TestManagerUrgentView, TestConfigUrgentPalette, TestManagerSync, TestHelp, TestBarSetViewHighlight, TestManagerBarTitleAction, TestWindowCorrectedSendCoords, TestWindowGetTitleNonBlocking, TestManagerModifiersFromHotkey, TestViewCycleDrain, TestManagerStaleBounce, TestManagerClassifyHideEvent, TestManagerParseSavedWindowLine, TestManagerUnmanage, TestManagerProcessHideQueue, TestManagerValidateAlive)
 
 total := TEST_PASS_COUNT + TEST_FAIL_COUNT
 FileAppend, % "`n--- " . TEST_PASS_COUNT . " passed, " . TEST_FAIL_COUNT . " failed (" . total . " total) ---`n", *
@@ -65,3 +65,6 @@ ExitApp, % TEST_FAIL_COUNT
 #Include %A_ScriptDir%\test_Manager_staleBounce.ahk
 #Include %A_ScriptDir%\test_Manager_classifyHideEvent.ahk
 #Include %A_ScriptDir%\test_Manager_parseSavedWindowLine.ahk
+#Include %A_ScriptDir%\test_Manager_unmanage.ahk
+#Include %A_ScriptDir%\test_Manager_processHideQueue.ahk
+#Include %A_ScriptDir%\test_Manager_validateAlive.ahk
