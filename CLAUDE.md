@@ -24,6 +24,19 @@ Approval to commit is not approval to push. Get explicit verbal "push it" first.
 ## Before Posting
 Show proposed wording before posting any comment or PR body. Applies to our fork and upstream alike.
 
+## Run benches serially
+Never dispatch two `bugn-bench.exe` runs in parallel. `#SingleInstance off`
+lets the bench coexist with the user's running bugn.exe, **not** with a
+second bench. Concurrent benches race on the same playground views and the
+SendInput input queue — they produce AHK error popups, false `REGRESSION`
+log lines, and stuck modifier keys (Win/Ctrl/Alt left in OS-held state)
+that take down the user's hotkeys system-wide until the offending bench
+process is killed.
+
+Chain scenarios with `;` in a single PowerShell call, or send them as
+separate sequential Bash calls. Never two background jobs. Confirm
+`Get-Process bugn-bench` is empty before starting the next one.
+
 ## Always target our fork when opening PRs
 This repo is `somanysteves/bug.n`, a fork of `fuhsjr00/bug.n`. `gh pr create`
 defaults to the **parent** repo (upstream) when run from inside a fork — running

@@ -290,8 +290,14 @@ Manager_validateAliveTimer:
   If Manager_validateInProgress
     Return
   Manager_validateInProgress := True
-  If (Manager_validateAlive() And Config_dynamicTiling)
-    View_arrange(Manager_aMonitor, Monitor_#%Manager_aMonitor%_aView_#1)
+  validateAliveAffected := Manager_validateAlive()
+  Loop, PARSE, validateAliveAffected, `;
+  {
+    If Not A_LoopField
+      Continue
+    If Config_dynamicTiling
+      View_arrange(A_LoopField, Monitor_#%A_LoopField%_aView_#1)
+  }
   Manager_validateInProgress := False
 Return
 
@@ -385,30 +391,56 @@ Manager_winHideDeferred:
   winHideQueue := Manager_pendingHideWndIds
   Manager_pendingHideWndIds := ""
   StringTrimRight, winHideQueue, winHideQueue, 1
-  winHideDirty := False
-  Loop, PARSE, winHideQueue, `;
+  Manager__processHideQueue(winHideQueue)
+Return
+
+;; Extracted body of Manager_winHideDeferred so the multi-monitor
+;; arrange logic is Yunit-testable. Unmanages every still-hidden
+;; managed non-hung window in the supplied queue, then arranges +
+;; refreshes the bar for each *affected monitor's* visible view --
+;; not just Manager_aMonitor (#59 pre-fix targeted only the active
+;; monitor, leaving sibling monitors with ghost tile slots until a
+;; user-driven view switch on that monitor).
+;;
+;; Returns the affected-monitor set as a ";m1;m2;" string (or "").
+;; The label ignores the return; tests assert on it directly.
+Manager__processHideQueue(queue) {
+  Global
+  Local affected, m
+
+  affected := ""
+  Loop, PARSE, queue, `;
   {
     If Not A_LoopField
       Continue
     ;; Re-verify: still hidden (didn't bounce back), still managed
     ;; (no concurrent unmanage), and not hung (don't unmanage a hung
     ;; window — IsWindowVisible can flicker on resume).
+    ;; Manager_isManaged does numeric comparison so prefix/suffix
+    ;; collisions between the queued hwnd and other managed entries
+    ;; (e.g., 12 inside 112) can't false-match — matches the pattern
+    ;; locked in for classifyHideEvent by PR #58.
     If DllCall("IsWindowVisible", "Ptr", A_LoopField)
       Continue
-    If Not InStr(Manager_managedWndIds, A_LoopField ";")
+    If Not Manager_isManaged(A_LoopField)
       Continue
     If Window_isHung(A_LoopField)
       Continue
-    Debug_logMessage("DEBUG[1] Manager_winHideDeferred: unmanage " A_LoopField " (app-side hide)", 1)
-    Manager_unmanage(A_LoopField)
-    winHideDirty := True
+    Debug_logMessage("DEBUG[1] Manager__processHideQueue: unmanage " A_LoopField " (app-side hide)", 1)
+    m := Manager_unmanage(A_LoopField)
+    If m And Not InStr(affected, ";" m ";")
+      affected .= ";" m ";"
   }
-  If winHideDirty {
+  Loop, PARSE, affected, `;
+  {
+    If Not A_LoopField
+      Continue
     If Config_dynamicTiling
-      View_arrange(Manager_aMonitor, Monitor_#%Manager_aMonitor%_aView_#1)
-    Bar_updateView(Manager_aMonitor, Monitor_#%Manager_aMonitor%_aView_#1)
+      View_arrange(A_LoopField, Monitor_#%A_LoopField%_aView_#1)
+    Bar_updateView(A_LoopField, Monitor_#%A_LoopField%_aView_#1)
   }
-Return
+  Return affected
+}
 
 Manager_getWindowInfo() {
   Local aWndClass, aWndHeight, aWndId, aWndPId, aWndPName, aWndStyle, aWndTitle, aWndWidth, aWndX, aWndY, detectHiddenWnds, isHidden, text, v
@@ -1872,14 +1904,17 @@ Manager_sync(ByRef wndIds = "")
 ;;
 ;; Scheduled via Manager_validateAliveTimer (deferred -200 ms after
 ;; shell events) so this work happens off the shell-event hot path
-;; rather than synchronously inside Manager_sync. Returns 1 if anything
-;; was pruned, 0 otherwise; caller is responsible for re-arranging the
-;; active view if needed.
+;; rather than synchronously inside Manager_sync. Returns the set of
+;; affected monitors as a ";m1;m2;" string (or "" if nothing pruned);
+;; caller iterates that set and arranges/refreshes each monitor's
+;; visible view. Pre-#59 returned a bool and the timer blindly
+;; re-arranged Manager_aMonitor, missing sibling monitors that owned
+;; the dead windows.
 Manager_validateAlive() {
-  Local a, deadWndIds, flag, mgrTrimmed, prevDetect
+  Local affected, deadWndIds, m, mgrTrimmed, prevDetect
 
   Perf_start("Manager_validateAlive")
-  a := 0
+  affected := ""
   prevDetect := A_DetectHiddenWindows
   DetectHiddenWindows, On
   deadWndIds := ""
@@ -1893,27 +1928,41 @@ Manager_validateAlive() {
   StringTrimRight, deadWndIds, deadWndIds, 1
   Loop, PARSE, deadWndIds, `;
   {
-    If A_LoopField {
-      flag := Manager_unmanage(A_LoopField)
-      If flag
-        a := 1
-    }
+    If Not A_LoopField
+      Continue
+    m := Manager_unmanage(A_LoopField)
+    If m And Not InStr(affected, ";" m ";")
+      affected .= ";" m ";"
   }
   Perf_end("Manager_validateAlive")
-  Return a
+  Return affected
 }
 
+;; Unmanage a window: strip it from every view on the monitor it
+;; belonged to, clear its per-window globals, and remove it from
+;; the managed/all lists. Returns the monitor the window lived on
+;; (or 0 if Window_#%wndId%_monitor was unset, e.g. a stale double-
+;; unmanage call). Callers (Manager_winHideDeferred queue,
+;; Manager_validateAlive) use the returned monitor to schedule a
+;; View_arrange + Bar_updateView for the *affected* monitor's
+;; visible view rather than blindly refreshing Manager_aMonitor.
+;;
+;; Before #59 this used Manager_aMonitor for the strip loop and
+;; Bar_updateView call, which silently corrupted state on a
+;; non-active monitor when EVENT_OBJECT_HIDE or Manager_validateAlive
+;; fired for a window living elsewhere — invisible on single-monitor
+;; setups, ghost wndId + stale bar count on multi-monitor.
 Manager_unmanage(wndId) {
-  Local a, aView
+  Local m
 
-  aView := Monitor_#%Manager_aMonitor%_aView_#1
-
-  a := Window_#%wndId%_tags & 1 << aView - 1
-  Loop, % Config_viewCount {
-    If (Window_#%wndId%_tags & 1 << A_Index - 1) {
-      StringReplace, View_#%Manager_aMonitor%_#%A_Index%_wndIds, View_#%Manager_aMonitor%_#%A_Index%_wndIds, % wndId ";",, All
-      StringReplace, View_#%Manager_aMonitor%_#%A_Index%_aWndIds, View_#%Manager_aMonitor%_#%A_Index%_aWndIds, % wndId ";",, All
-      Bar_updateView(Manager_aMonitor, A_Index)
+  m := Window_#%wndId%_monitor
+  If m {
+    Loop, % Config_viewCount {
+      If (Window_#%wndId%_tags & 1 << A_Index - 1) {
+        StringReplace, View_#%m%_#%A_Index%_wndIds, View_#%m%_#%A_Index%_wndIds, % wndId ";",, All
+        StringReplace, View_#%m%_#%A_Index%_aWndIds, View_#%m%_#%A_Index%_aWndIds, % wndId ";",, All
+        Bar_updateView(m, A_Index)
+      }
     }
   }
   Window_#%wndId%_monitor     :=
@@ -1926,7 +1975,7 @@ Manager_unmanage(wndId) {
   StringReplace, Manager_allWndIds, Manager_allWndIds, %wndId%`;,
   StringReplace, Manager_managedWndIds, Manager_managedWndIds, %wndId%`;, , All
 
-  Return, a
+  Return, m ? m : 0
 }
 
 Manager_winActivate(wndId) {

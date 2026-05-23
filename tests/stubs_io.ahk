@@ -14,6 +14,7 @@ Test_viewArrangeCallCount      := 0
 Test_viewArrangeLastMonitor    := 0
 Test_viewArrangeLastView       := 0
 Test_viewArrangeLastSetLayout  := False
+Test_viewArrangeHistory        := ""   ;; ";m,v;m,v;" for tests that span multiple monitors
 
 Test_managerSetCursorCallCount := 0
 Test_managerSetCursorLastWndId := 0
@@ -21,10 +22,12 @@ Test_managerSetCursorLastWndId := 0
 View_arrange(m, v, setLayout = False) {
   Global Test_viewArrangeCallCount, Test_viewArrangeLastMonitor
   Global Test_viewArrangeLastView, Test_viewArrangeLastSetLayout
+  Global Test_viewArrangeHistory
   Test_viewArrangeCallCount     += 1
   Test_viewArrangeLastMonitor   := m
   Test_viewArrangeLastView      := v
   Test_viewArrangeLastSetLayout := setLayout
+  Test_viewArrangeHistory       .= ";" m "," v ";"
 }
 
 Manager_setCursor(wndId) {
