@@ -223,13 +223,9 @@ Window_isHung(wndId) {
 ;; can stall the AHK thread for seconds when the target window's proc is
 ;; slow to service WM_GETTEXT -- the pathology behind keyboard hangs when
 ;; clicking into Edge/Slack under load. Returns "" on timeout, hung window,
-;; or null HWND.
-;;
-;; 4096-WCHAR buffer (8192 bytes); wParam is max chars to receive
-;; including the null terminator. Real-world top-level titles are
-;; typically <256 chars; this gives ample headroom so Manager_applyRules'
-;; title-regex matching doesn't get truncated on long titles (browser
-;; tabs with URL+query, file dialogs with deep paths).
+;; or null HWND. 4096-WCHAR buffer (8192 bytes) gives ample headroom for
+;; long titles. Not used in Manager_applyRules: rule result is sticky per-HWND,
+;; so timeout-as-empty would permanently mismatch title rules (#45).
 Window_getTitleNonBlocking(wndId) {
   Local title, result
   If Not wndId
