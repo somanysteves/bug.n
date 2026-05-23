@@ -114,7 +114,9 @@ Manager_applyRules(wndId, ByRef isManaged, ByRef m, ByRef tags, ByRef isFloating
   action      := ""
 
   WinGetClass, wndClass, ahk_id %wndId%
-  wndTitle := Window_getTitleNonBlocking(wndId)
+  ;; Sync WinGetTitle: rule result is sticky per-HWND, so a timed-out title would
+  ;; permanently downgrade the window to the catch-all rule (#45).
+  WinGetTitle, wndTitle, ahk_id %wndId%
   If (wndClass Or wndTitle) {
     Loop, % Config_ruleCount {
       ;; The rules are traversed in reverse order.
