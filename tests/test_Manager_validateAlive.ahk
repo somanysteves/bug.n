@@ -81,7 +81,7 @@ class TestManagerValidateAlive
   DeadWindowsSameMonitor_MonitorListedOnce()
   {
     ;; Move 1002 to m1 so both dead windows share a monitor.
-    Global Window_#1002_monitor, View_#2_#1_wndIds, View_#1_#1_wndIds
+    Global Window_#1002_monitor, Window_#1002_tags, View_#2_#1_wndIds, View_#1_#1_wndIds
     Window_#1002_monitor := 1
     Window_#1002_tags    := 1
     View_#2_#1_wndIds    := ""

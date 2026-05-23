@@ -416,13 +416,17 @@ Manager__processHideQueue(queue) {
     ;; Re-verify: still hidden (didn't bounce back), still managed
     ;; (no concurrent unmanage), and not hung (don't unmanage a hung
     ;; window — IsWindowVisible can flicker on resume).
+    ;; Manager_isManaged does numeric comparison so prefix/suffix
+    ;; collisions between the queued hwnd and other managed entries
+    ;; (e.g., 12 inside 112) can't false-match — matches the pattern
+    ;; locked in for classifyHideEvent by PR #58.
     If DllCall("IsWindowVisible", "Ptr", A_LoopField)
       Continue
-    If Not InStr(Manager_managedWndIds, A_LoopField ";")
+    If Not Manager_isManaged(A_LoopField)
       Continue
     If Window_isHung(A_LoopField)
       Continue
-    Debug_logMessage("DEBUG[1] Manager_winHideDeferred: unmanage " A_LoopField " (app-side hide)", 1)
+    Debug_logMessage("DEBUG[1] Manager__processHideQueue: unmanage " A_LoopField " (app-side hide)", 1)
     m := Manager_unmanage(A_LoopField)
     If m And Not InStr(affected, ";" m ";")
       affected .= ";" m ";"
