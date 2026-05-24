@@ -1718,8 +1718,7 @@ Manager_renameView() {
   ;; Gui hosting an editable Edit (the Edit captures Esc before it
   ;; bubbles to the Gui's WM_COMMAND IDCANCEL handler). Bind Esc
   ;; explicitly while the dialog is the active window.
-  Hotkey, IfWinActive, % "ahk_id " . Manager_renameView_hwnd
-  Hotkey, Esc, Manager_renameViewCancel, On
+  Manager_setScopedHotkey(Manager_renameView_hwnd, "Esc", "Manager_renameViewCancel")
 }
 
 ;; Common dismissal: tear down the Gui and release the per-dialog
@@ -1728,8 +1727,27 @@ Manager_renameView_dismiss() {
   Global Manager_renameView_hwnd
   Gui, RenameView: Default
   Gui, Destroy
-  Hotkey, IfWinActive, % "ahk_id " . Manager_renameView_hwnd
-  Hotkey, Esc, , Off
+  Manager_clearScopedHotkey(Manager_renameView_hwnd, "Esc")
+}
+
+;; Bind <key> to <handler> while the window <hwnd> is active.
+;; Pairs the Hotkey IfWinActive directive with a reset so subsequent
+;; Hotkey commands anywhere in the process aren't accidentally scoped
+;; to <hwnd>. Use Manager_clearScopedHotkey to remove the binding.
+;;
+;; Without the pairing, a forgotten Hotkey IfWinActive lingers and
+;; silently scopes every subsequent Hotkey registration to a window
+;; that may no longer exist (caught by Copilot review on PR #70).
+Manager_setScopedHotkey(hwnd, key, handler) {
+  Hotkey, IfWinActive, % "ahk_id " . hwnd
+  Hotkey, %key%, %handler%, On
+  Hotkey, IfWinActive
+}
+
+Manager_clearScopedHotkey(hwnd, key) {
+  Hotkey, IfWinActive, % "ahk_id " . hwnd
+  Hotkey, %key%, , Off
+  Hotkey, IfWinActive
 }
 
 ;; OK button / Enter key. Reads the edit, dismisses the Gui, applies
