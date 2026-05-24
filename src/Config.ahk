@@ -434,6 +434,7 @@ Config_initDefaultHotkeys()
   Config_setHotkey("~WheelUp",    "Manager_activateViewByMouse(-1)")
   Config_setHotkey("~WheelDown",  "Manager_activateViewByMouse(+1)")
   Config_setHotkey("#u",          "Manager_activateUrgentView()")
+  Config_setHotkey("#/",          "Manager_renameView()")
 
   ;; Monitor management
   Config_setHotkey("#.",          "Manager_activateMonitor(0, +1)")
@@ -507,7 +508,7 @@ Config_restoreLayout(filename, m) {
     Return
 
   Loop, READ, %filename%
-    If (SubStr(A_LoopReadLine, 1, 10 + StrLen(m)) = "Monitor_#" m "_" Or SubStr(A_LoopReadLine, 1, 8 + StrLen(m)) = "View_#" m "_#") {
+    If (SubStr(A_LoopReadLine, 1, 10 + StrLen(m)) = "Monitor_#" m "_" Or SubStr(A_LoopReadLine, 1, 8 + StrLen(m)) = "View_#" m "_#" Or SubStr(A_LoopReadLine, 1, 18) = "Config_viewNames_#") {
       i := InStr(A_LoopReadLine, "=")
       var := SubStr(A_LoopReadLine, 1, i - 1)
       val := SubStr(A_LoopReadLine, i + 1)
@@ -517,7 +518,7 @@ Config_restoreLayout(filename, m) {
 
 Config_saveSession(original, target)
 {
-  Local m, text, tmpfilename
+  Local m, text, tmpfilename, vBaseline0, vBaseline1, vBaseline2, vBaseline3, vBaseline4, vBaseline5, vBaseline6, vBaseline7, vBaseline8, vBaseline9
 
   tmpfilename := target . ".tmp"
   FileDelete, %tmpfilename%
@@ -567,6 +568,13 @@ Config_saveSession(original, target)
       If Not (View_#%m%_#%A_Index%_layoutStackMY = Config_layoutStackMY)
         text .= "View_#" m "_#" A_Index "_layoutStackMY=" View_#%m%_#%A_Index%_layoutStackMY "`n"
     }
+  }
+
+  ;; View names are global (not per-monitor), so emit once after the monitor loop.
+  StringSplit, vBaseline, Config_viewNames, `;
+  Loop, % Config_viewCount {
+    If Not (Config_viewNames_#%A_Index% = vBaseline%A_Index%)
+      text .= "Config_viewNames_#" A_Index "=" Config_viewNames_#%A_Index% "`n"
   }
 
   ;; The FileMove below is an all-or-nothing replacement of the file.

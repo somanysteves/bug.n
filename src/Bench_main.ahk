@@ -91,6 +91,8 @@ Bench_kick:
     Bench_runDispatch(Bench_iterations)
   Else If (Bench_scenario = "titlestorm")
     Bench_runTitleStorm()
+  Else If (Bench_scenario = "rename")
+    Bench_runRename()
   Else
     Perf_runBench(Bench_windows, Bench_iterations)
 Return
@@ -124,6 +126,7 @@ Main_evalCommand(command) {
 #Include %A_ScriptDir%\Manager.ahk
 #Include %A_ScriptDir%\Perf.ahk
 #Include %A_ScriptDir%\Bench_dispatch.ahk
+#Include %A_ScriptDir%\Bench_rename.ahk
 #Include %A_ScriptDir%\Bench_titleStorm.ahk
 #Include %A_ScriptDir%\Bench_urgent.ahk
 #Include %A_ScriptDir%\Manager_setCursor.ahk

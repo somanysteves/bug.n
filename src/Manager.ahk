@@ -1670,6 +1670,47 @@ Manager_saveWindowState(filename, nm, nv) {
 ;; Manager_setCursor lives in src/Manager_setCursor.ahk so tests can
 ;; stub it out. See tests/README.md for the stub-swap pattern.
 
+Manager_renameView() {
+  Global
+  Local aView, current, newName
+
+  aView := Monitor_#%Manager_aMonitor%_aView_#1
+  current := Config_viewNames_#%aView%
+
+  InputBox, newName, Rename view, Enter a new name for view %aView%:, , 320, 130, , , , , %current%
+  If ErrorLevel
+    Return
+  If Not Manager_applyViewRename(aView, newName)
+    Return
+
+  ;; View element widths are baked in at Bar_init time, so a longer
+  ;; name needs a full rebuild for the bar to reflow.
+  Loop, % Manager_monitorCount
+    Bar_init(A_Index)
+  Loop, % Manager_monitorCount
+    Bar_updateView(A_Index, Monitor_#%A_Index%_aView_#1)
+  Bar_updateStatus()
+  Bar_updateTitle()
+}
+
+;; Pure post-dialog half of Manager_renameView, exposed for Yunit and
+;; for Bench_runRename. Validates input, mutates Config_viewNames_#aView,
+;; sets Manager_layoutDirty. Returns True if applied.
+Manager_applyViewRename(aView, newName) {
+  Global
+  Local current
+
+  current := Config_viewNames_#%aView%
+  If (newName = "")
+    Return False
+  If (newName = current)
+    Return False
+
+  Config_viewNames_#%aView% := newName
+  Manager_layoutDirty := 1
+  Return True
+}
+
 Manager_setViewMonitor(i, d = 0) {
   Local aView, aWndId, v, wndIds
 
