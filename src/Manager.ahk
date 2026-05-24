@@ -1670,28 +1670,101 @@ Manager_saveWindowState(filename, nm, nv) {
 ;; Manager_setCursor lives in src/Manager_setCursor.ahk so tests can
 ;; stub it out. See tests/README.md for the stub-swap pattern.
 
+;; Pops a +AlwaysOnTop custom Gui (matching the Help_show pattern at
+;; Help.ahk:38) for the user to type a new name for the active view.
+;; AHK's InputBox is unreliable in this code path: it inherits the
+;; calling thread's (non-foreground) process state, hits Win11's
+;; foreground-lock, can pop behind other AlwaysOnTop windows, and
+;; carries a generic #32770 class that bug.n's window-event hook
+;; would otherwise try to manage. A named Gui ("RenameView") with
+;; a unique window title (bug.n_RENAME) sidesteps all of that.
+;;
+;; Asynchronous by design: this function shows the dialog and
+;; returns. The actual mutation + bar rebuild happens in the
+;; Manager_renameViewSubmit label when the user hits Enter / clicks OK.
 Manager_renameView() {
   Global
-  Local aView, current, newName
+  Local m, mX, mY, mW, mH, popupH, popupW, x, y, current
 
-  aView := Monitor_#%Manager_aMonitor%_aView_#1
-  current := Config_viewNames_#%aView%
+  Manager_renameView_aView := Monitor_#%Manager_aMonitor%_aView_#1
+  current := Config_viewNames_#%Manager_renameView_aView%
 
-  InputBox, newName, Rename view, Enter a new name for view %aView%:, , 320, 130, , , , , %current%
-  If ErrorLevel
-    Return
-  If Not Manager_applyViewRename(aView, newName)
-    Return
+  Gui, RenameView: Default
+  Gui, +LabelManager_renameViewGui
+  Gui, Destroy
+  Gui, +LastFound -Caption +ToolWindow +AlwaysOnTop +Border +OwnDialogs +HwndManager_renameView_hwnd
+  Gui, Color, %Config_backColor_#1_#3%
+  Gui, Margin, 16, 16
+  Gui, Font, c%Config_fontColor_#1_#3% s%Config_fontSize%, %Config_fontName%
+  Gui, Add, Text, , % "Rename view " . Manager_renameView_aView . ":"
+  Gui, Add, Edit, w300 vManager_renameView_input, %current%
+  Gui, Add, Button, Default w80 gManager_renameViewSubmit, OK
+  Gui, Add, Button, x+10 w80 gManager_renameViewCancel, Cancel
 
-  ;; View element widths are baked in at Bar_init time, so a longer
-  ;; name needs a full rebuild for the bar to reflow.
-  Loop, % Manager_monitorCount
-    Bar_init(A_Index)
-  Loop, % Manager_monitorCount
-    Bar_updateView(A_Index, Monitor_#%A_Index%_aView_#1)
-  Bar_updateStatus()
-  Bar_updateTitle()
+  m := Manager_aMonitor
+  mX := Monitor_#%m%_x
+  mY := Monitor_#%m%_y
+  mW := Monitor_#%m%_width
+  mH := Monitor_#%m%_height
+  popupW := 332
+  popupH := 110
+  x := mX + (mW - popupW) / 2
+  y := mY + (mH - popupH) / 2
+
+  Gui, Show, x%x% y%y% w%popupW% h%popupH%, bug.n_RENAME
+  GuiControl, Focus, Manager_renameView_input
+
+  ;; GuiEscape doesn't fire reliably on Win11 for a -Caption +ToolWindow
+  ;; Gui hosting an editable Edit (the Edit captures Esc before it
+  ;; bubbles to the Gui's WM_COMMAND IDCANCEL handler). Bind Esc
+  ;; explicitly while the dialog is the active window.
+  Hotkey, IfWinActive, % "ahk_id " . Manager_renameView_hwnd
+  Hotkey, Esc, Manager_renameViewCancel, On
 }
+
+;; Common dismissal: tear down the Gui and release the per-dialog
+;; Esc hotkey so it doesn't fire stray Cancels in other contexts.
+Manager_renameView_dismiss() {
+  Global Manager_renameView_hwnd
+  Gui, RenameView: Default
+  Gui, Destroy
+  Hotkey, IfWinActive, % "ahk_id " . Manager_renameView_hwnd
+  Hotkey, Esc, , Off
+}
+
+;; OK button / Enter key. Reads the edit, dismisses the Gui, applies
+;; the rename and rebuilds bars on success.
+Manager_renameViewSubmit:
+  Gui, RenameView: Default
+  Gui, Submit, NoHide
+  Manager_renameView_dismiss()
+  If Manager_applyViewRename(Manager_renameView_aView, Manager_renameView_input) {
+    Loop, % Manager_monitorCount
+      Bar_init(A_Index)
+    Loop, % Manager_monitorCount
+      Bar_updateView(A_Index, Monitor_#%A_Index%_aView_#1)
+    Bar_updateStatus()
+    Bar_updateTitle()
+  }
+Return
+
+;; Cancel button.
+Manager_renameViewCancel:
+  Manager_renameView_dismiss()
+Return
+
+;; +LabelManager_renameViewGui auto-routes Escape and Close to these
+;; labels (mirrors the Help_GuiEscape / Help_GuiClose pattern).
+;; GuiEscape is unreliable on Win11 for our config — Esc is bound
+;; explicitly above as a per-dialog hotkey — but keep this label in
+;; case AHK's bubble-up ever does fire.
+Manager_renameViewGuiEscape:
+  Manager_renameView_dismiss()
+Return
+
+Manager_renameViewGuiClose:
+  Manager_renameView_dismiss()
+Return
 
 ;; Pure post-dialog half of Manager_renameView, exposed for Yunit and
 ;; for Bench_runRename. Validates input, mutates Config_viewNames_#aView,
