@@ -360,8 +360,15 @@ Toggle the view margins.
 
 Activate the previously activated view.
 
-> You may also use `Monitor_activateView(0, -1)` or `Monitor_activateView(0, +1)`
-for activating the previous or next adjacent view.
+-------------------------------------------------------------------------------
+`Config_hotkey=#Right::Monitor_activateView(0, +1)`
+
+Activate the next adjacent view (wrapping at the last view).
+
+-------------------------------------------------------------------------------
+`Config_hotkey=#Left::Monitor_activateView(0, -1)`
+
+Activate the previous adjacent view (wrapping at the first view).
 
 -------------------------------------------------------------------------------
 `Config_hotkey=#+0::Monitor_setWindowTag(10)`
