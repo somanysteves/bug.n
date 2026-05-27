@@ -1303,7 +1303,7 @@ Manager_registerWindowCreateOrShowHook() {
 
   Manager_winCreateOrShowHook := DllCall("SetWinEventHook"
     , "UInt", 0x8000          ;; eventMin: EVENT_OBJECT_CREATE
-    , "UInt", 0x8003          ;; eventMax: EVENT_OBJECT_HIDE (DESTROY=0x8001 filtered in callback)
+    , "UInt", 0x8003          ;; eventMax: EVENT_OBJECT_HIDE (all four events handled in callback)
     , "Ptr",  0               ;; hmodWinEventProc (NULL = out-of-context)
     , "Ptr",  Manager_winCreateOrShowHookCb
     , "UInt", 0               ;; idProcess (0 = all processes)
