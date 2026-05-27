@@ -1759,8 +1759,10 @@ Manager_renameViewSubmit:
   If Manager_applyViewRename(Manager_renameView_aView, Manager_renameView_input) {
     Loop, % Manager_monitorCount
       Bar_init(A_Index)
-    Loop, % Manager_monitorCount
+    Loop, % Manager_monitorCount {
       Bar_updateView(A_Index, Monitor_#%A_Index%_aView_#1)
+      Bar_updateLayout(A_Index)
+    }
     Bar_updateStatus()
     Bar_updateTitle()
   }
