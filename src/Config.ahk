@@ -403,6 +403,8 @@ Config_initDefaultHotkeys()
 
   ;; View/Tag management
   Config_setHotkey("#BackSpace",  "Monitor_activateView(-1)")
+  Config_setHotkey("#Right",      "Monitor_activateView(0, +1)")
+  Config_setHotkey("#Left",       "Monitor_activateView(0, -1)")
   Config_setHotkey("#+0",         "Monitor_setWindowTag(10)")
   Config_setHotkey("#1",          "Monitor_activateView(1)")
   Config_setHotkey("#+1",         "Monitor_setWindowTag(1)")

@@ -218,28 +218,28 @@ Set the _monocle layout_.
 Set the _tile layout_.
 
 -------------------------------------------------------------------------------
-`Config_hotkey=#Left::View_setLayoutProperty(MFactor, 0, -0.05)`
+`Config_hotkey=#h::View_setLayoutProperty(MFactor, 0, -0.05)`
 
 _Reduce_ the size of _the master area_ in the active view.
 
 > This has only an effect, if the tile layout is active.
 
 > You may also set an additional parameter for accelerating the third one. E.g.
-with `Config_hotkey=#Left::View_setLayoutProperty(MFactor, 0, -0.05, 2)` the
+with `Config_hotkey=#h::View_setLayoutProperty(MFactor, 0, -0.05, 2)` the
 first step, by which the master area is reduced, is -0.0016% and will be
 doubled with consecutive calls until it reaches -0.05%.
 With the second parameter you may set an absolute value, e.g.
 `View_setLayoutProperty(MFactor, 0.5, 0)` splits the view in half.
 
 -------------------------------------------------------------------------------
-`Config_hotkey=#Right::View_setLayoutProperty(MFactor, 0, +0.05)`
+`Config_hotkey=#;::View_setLayoutProperty(MFactor, 0, +0.05)`
 
 _Enlarge_ the size of _the master area_ in the active view.
 
 > This has only an effect, if the tile layout is active.
 
 > You may also set a additional parameter for accelerating the third one. E.g.
-with `Config_hotkey=#Right::View_setLayoutProperty(MFactor, 0, +0.05, 0.5)` the
+with `Config_hotkey=#;::View_setLayoutProperty(MFactor, 0, +0.05, 0.5)` the
 first step, by which the master area is reduced, is 0.05%, but with consecutive
 calls it will be halved until it reaches 0.0016%.
 With the second parameter you may set an absolute value, e.g.
@@ -295,6 +295,8 @@ Maximum of 9.
 
 > This has only an effect, if the tile layout is active.
 
+> `#+h` is also bound to this action by default.
+
 -------------------------------------------------------------------------------
 `Config_hotkey=#^Down::View_setLayoutProperty(MY, 0, -1)`
 
@@ -302,6 +304,26 @@ Decrease the master Y dimension.
 
 > This results in a decreased number of windows in the master area by X.
 Minimum of 1.
+
+> This has only an effect, if the tile layout is active.
+
+> `#+;` is also bound to this action by default.
+
+-------------------------------------------------------------------------------
+`Config_hotkey=#^h::View_setLayoutProperty(StackMX, 0, +1)`
+
+Increase the stack X dimension.
+
+> This results in additional stack columns. Maximum of 9.
+
+> This has only an effect, if the tile layout is active.
+
+-------------------------------------------------------------------------------
+`Config_hotkey=#^;::View_setLayoutProperty(StackMX, 0, -1)`
+
+Decrease the stack X dimension.
+
+> This results in fewer stack columns. Minimum of 1.
 
 > This has only an effect, if the tile layout is active.
 
@@ -340,7 +362,7 @@ gap and `View_setLayoutProperty(GapWidth, 20, 0)` will set it to 20px.
 _Increase the gap between windows_ in "monocle" and "tile" layout.
 
 -------------------------------------------------------------------------------
-`Config_hotkey=#^Backspace::View_resetTileLayout()`
+`Config_hotkey=#+r::View_resetTileLayout()`
 
 _Reset the tile layout_.
 
@@ -360,8 +382,15 @@ Toggle the view margins.
 
 Activate the previously activated view.
 
-> You may also use `Monitor_activateView(0, -1)` or `Monitor_activateView(0, +1)`
-for activating the previous or next adjacent view.
+-------------------------------------------------------------------------------
+`Config_hotkey=#Right::Monitor_activateView(0, +1)`
+
+Activate the next adjacent view (wrapping at the last view).
+
+-------------------------------------------------------------------------------
+`Config_hotkey=#Left::Monitor_activateView(0, -1)`
+
+Activate the previous adjacent view (wrapping at the first view).
 
 -------------------------------------------------------------------------------
 `Config_hotkey=#+0::Monitor_setWindowTag(10)`
