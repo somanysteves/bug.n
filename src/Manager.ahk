@@ -1583,7 +1583,7 @@ Manager__restoreWindowState(filename) {
     StringSplit, items, view_list%A_Index%, `;
     view_set := ""
     Loop, % (items0 - 1) {
-      If ( InStr(candidate_set, items%A_Index% ) > 0 )
+      If ( items%A_Index% And InStr(candidate_set, items%A_Index% ) > 0 )
         view_set := view_set . items%A_Index% . ";"
     }
     view_var := "View_#" . view_m%A_Index% . "_#" . view_v%A_Index% . "_wndIds"
