@@ -1318,8 +1318,8 @@ Manager_registerWindowCreateOrShowHook() {
 ;; windows during a coexistence-mutex window.
 Manager_onWindowCreateOrShow(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, dwmsEventTime) {
   Global Manager_isBench, Manager_pendingHideWndIds
-  ;; CREATE (0x8000), SHOW (0x8002), HIDE (0x8003). Skip DESTROY (0x8001).
-  If (event != 0x8000 And event != 0x8002 And event != 0x8003)
+  ;; CREATE (0x8000), DESTROY (0x8001), SHOW (0x8002), HIDE (0x8003).
+  If (event != 0x8000 And event != 0x8001 And event != 0x8002 And event != 0x8003)
     Return
   ;; Window-level events only — skip controls, menus, accessibility children.
   If (idObject != 0 Or idChild != 0)
@@ -1337,6 +1337,16 @@ Manager_onWindowCreateOrShow(hWinEventHook, event, hwnd, idObject, idChild, idEv
       DllCall("CloseHandle", "Ptr", benchHandle)
       Return
     }
+  }
+  If (event = 0x8001) {
+    ;; EVENT_OBJECT_DESTROY backstop: catches window destructions that
+    ;; HSHELL_WINDOWDESTROYED misses when RegisterShellHookWindow drops events.
+    ;; WinEvent hooks are more reliable than the legacy shell hook under load.
+    If Manager_isManaged(hwnd) {
+      Debug_logMessage("DEBUG[1] Manager_onWindowCreateOrShow: DESTROY managed hwnd=" . hwnd . " -- arming validateAlive", 1)
+      SetTimer, Manager_validateAliveTimer, -200
+    }
+    Return
   }
   If (event = 0x8003) {
     ;; EVENT_OBJECT_HIDE: distinguish our hide (view-switching) from an
