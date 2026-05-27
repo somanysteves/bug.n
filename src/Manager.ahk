@@ -1303,7 +1303,7 @@ Manager_registerWindowCreateOrShowHook() {
 
   Manager_winCreateOrShowHook := DllCall("SetWinEventHook"
     , "UInt", 0x8000          ;; eventMin: EVENT_OBJECT_CREATE
-    , "UInt", 0x8003          ;; eventMax: EVENT_OBJECT_HIDE (DESTROY=0x8001 filtered in callback)
+    , "UInt", 0x8003          ;; eventMax: EVENT_OBJECT_HIDE (all four events handled in callback)
     , "Ptr",  0               ;; hmodWinEventProc (NULL = out-of-context)
     , "Ptr",  Manager_winCreateOrShowHookCb
     , "UInt", 0               ;; idProcess (0 = all processes)
@@ -1318,8 +1318,8 @@ Manager_registerWindowCreateOrShowHook() {
 ;; windows during a coexistence-mutex window.
 Manager_onWindowCreateOrShow(hWinEventHook, event, hwnd, idObject, idChild, idEventThread, dwmsEventTime) {
   Global Manager_isBench, Manager_pendingHideWndIds
-  ;; CREATE (0x8000), SHOW (0x8002), HIDE (0x8003). Skip DESTROY (0x8001).
-  If (event != 0x8000 And event != 0x8002 And event != 0x8003)
+  ;; CREATE (0x8000), DESTROY (0x8001), SHOW (0x8002), HIDE (0x8003).
+  If (event != 0x8000 And event != 0x8001 And event != 0x8002 And event != 0x8003)
     Return
   ;; Window-level events only — skip controls, menus, accessibility children.
   If (idObject != 0 Or idChild != 0)
@@ -1337,6 +1337,16 @@ Manager_onWindowCreateOrShow(hWinEventHook, event, hwnd, idObject, idChild, idEv
       DllCall("CloseHandle", "Ptr", benchHandle)
       Return
     }
+  }
+  If (event = 0x8001) {
+    ;; EVENT_OBJECT_DESTROY backstop: catches window destructions that
+    ;; HSHELL_WINDOWDESTROYED misses when RegisterShellHookWindow drops events.
+    ;; WinEvent hooks are more reliable than the legacy shell hook under load.
+    If Manager_isManaged(hwnd) {
+      Debug_logMessage("DEBUG[1] Manager_onWindowCreateOrShow: DESTROY managed hwnd=" . hwnd . " -- arming validateAlive", 1)
+      SetTimer, Manager_validateAliveTimer, -200
+    }
+    Return
   }
   If (event = 0x8003) {
     ;; EVENT_OBJECT_HIDE: distinguish our hide (view-switching) from an
@@ -1583,7 +1593,7 @@ Manager__restoreWindowState(filename) {
     StringSplit, items, view_list%A_Index%, `;
     view_set := ""
     Loop, % (items0 - 1) {
-      If ( InStr(candidate_set, items%A_Index% ) > 0 )
+      If ( items%A_Index% And InStr(candidate_set, items%A_Index% ) > 0 )
         view_set := view_set . items%A_Index% . ";"
     }
     view_var := "View_#" . view_m%A_Index% . "_#" . view_v%A_Index% . "_wndIds"
