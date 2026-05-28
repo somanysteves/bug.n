@@ -1639,6 +1639,13 @@ Manager_saveWindowState(filename, nm, nv) {
   Debug_logMessage("DEBUG[3] Manager_saveWindowState: loop start wndCount=" . allWndId0, 3)
   Loop, % allWndId0 {
     wndId := allWndId%A_Index%
+
+    ;; Prune ghost handles (abnormal kills never fire WINDOWDESTROYED) so _WindowState.ini self-heals.
+    If Not WinExist("ahk_id " . wndId) {
+      StringReplace, Manager_allWndIds, Manager_allWndIds, %wndId%`;,
+      Continue
+    }
+
     WinGet, wndPName, ProcessName, ahk_id %wndId%
 
     ; wndId;processName;Monitor;Tags;Floating;Decorated;HideTitle;Managed
