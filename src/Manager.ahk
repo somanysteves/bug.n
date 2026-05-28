@@ -1603,7 +1603,11 @@ Manager__restoreWindowState(filename) {
 
 Manager_saveState() {
   Critical
-  Global Config_filePath, Config_viewCount, Main_autoLayout, Main_autoWindowState, Manager_layoutDirty, Manager_monitorCount, Manager_windowsDirty
+  Global Config_filePath, Config_viewCount, Main_autoLayout, Main_autoWindowState, Manager_isBench, Manager_layoutDirty, Manager_monitorCount, Manager_windowsDirty
+
+  ;; Bench mode must never persist session state: the maintenance timer fires during runs and would overwrite the user's real _Layout.ini / _WindowState.ini.
+  If Manager_isBench
+    Return
 
   Debug_logMessage("DEBUG[2] Manager_saveState", 2)
 
