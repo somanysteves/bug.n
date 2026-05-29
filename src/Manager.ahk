@@ -1312,6 +1312,27 @@ Manager_registerWindowCreateOrShowHook() {
   Debug_logMessage("DEBUG[1] Manager_registerWindowCreateOrShowHook: hook=" . Manager_winCreateOrShowHook, 1)
 }
 
+;; Pure decision for the EVENT_OBJECT_DESTROY branch below. True iff a
+;; window bug.n is managing was just destroyed (window-level, not a
+;; control/child object). Reads only Manager_managedWndIds (via
+;; Manager_isManaged), so it is unit-testable without a live hook.
+;;
+;; Deliberately never consults GetAncestor: EVENT_OBJECT_DESTROY arrives
+;; out-of-context, so by the time we run the window is gone and
+;; GetAncestor returns 0. The old callback ran a GA_ROOT==self top-level
+;; gate ahead of the destroy branch, which therefore rejected every real
+;; destroy — with the legacy shell hook dropping HSHELL_WINDOWDESTROYED
+;; under load (#19), nothing re-tiled after a close. Managed-list
+;; membership is the authoritative signal: a hwnd only enters the list
+;; after Manager_manage accepted it as a top-level managed window.
+Manager_isManagedDestroy(event, idObject, idChild, hwnd) {
+  If (event != 0x8001)              ;; EVENT_OBJECT_DESTROY
+    Return False
+  If (idObject != 0 Or idChild != 0)
+    Return False
+  Return (Manager_isManaged(hwnd) != "")
+}
+
 ;; WinEventHook callback. Filter cheaply, defer real work via SetTimer to
 ;; avoid Manager_manage on the message-thread hot path. Mirrors the mutex
 ;; gate in Manager_onShellMessage so production doesn't manage bench
@@ -1324,9 +1345,6 @@ Manager_onWindowCreateOrShow(hWinEventHook, event, hwnd, idObject, idChild, idEv
   ;; Window-level events only — skip controls, menus, accessibility children.
   If (idObject != 0 Or idChild != 0)
     Return
-  ;; Skip non-top-level windows. GA_ROOT == 2.
-  If (DllCall("GetAncestor", "Ptr", hwnd, "UInt", 2, "Ptr") != hwnd)
-    Return
   ;; Coexistence with bugn-bench.exe (#19), same gate as Manager_onShellMessage.
   ;; Without `Global Manager_isBench` above, AHK's RegisterCallback bridge
   ;; doesn't expose super-globals — empty read would short-circuit the bench
@@ -1338,16 +1356,21 @@ Manager_onWindowCreateOrShow(hWinEventHook, event, hwnd, idObject, idChild, idEv
       Return
     }
   }
+  ;; EVENT_OBJECT_DESTROY backstop for HSHELL_WINDOWDESTROYED drops under
+  ;; load (#19). Decided before the GetAncestor gate below — a destroyed
+  ;; window is already gone, so that gate would reject every real destroy
+  ;; (see Manager_isManagedDestroy for the full rationale).
   If (event = 0x8001) {
-    ;; EVENT_OBJECT_DESTROY backstop: catches window destructions that
-    ;; HSHELL_WINDOWDESTROYED misses when RegisterShellHookWindow drops events.
-    ;; WinEvent hooks are more reliable than the legacy shell hook under load.
-    If Manager_isManaged(hwnd) {
+    If Manager_isManagedDestroy(event, idObject, idChild, hwnd) {
       Debug_logMessage("DEBUG[1] Manager_onWindowCreateOrShow: DESTROY managed hwnd=" . hwnd . " -- arming validateAlive", 1)
       SetTimer, Manager_validateAliveTimer, -200
     }
     Return
   }
+  ;; Skip non-top-level windows for the remaining live-window events
+  ;; (CREATE/SHOW/HIDE still exist, so GetAncestor is reliable). GA_ROOT == 2.
+  If (DllCall("GetAncestor", "Ptr", hwnd, "UInt", 2, "Ptr") != hwnd)
+    Return
   If (event = 0x8003) {
     ;; EVENT_OBJECT_HIDE: distinguish our hide (view-switching) from an
     ;; app hiding itself. See Manager_classifyHideEvent for the decision
