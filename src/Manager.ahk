@@ -1603,7 +1603,11 @@ Manager__restoreWindowState(filename) {
 
 Manager_saveState() {
   Critical
-  Global Config_filePath, Config_viewCount, Main_autoLayout, Main_autoWindowState, Manager_layoutDirty, Manager_monitorCount, Manager_windowsDirty
+  Global Config_filePath, Config_viewCount, Main_autoLayout, Main_autoWindowState, Manager_isBench, Manager_layoutDirty, Manager_monitorCount, Manager_windowsDirty
+
+  ;; Bench mode must never persist session state: the maintenance timer fires during runs and would overwrite the user's real _Layout.ini / _WindowState.ini.
+  If Manager_isBench
+    Return
 
   Debug_logMessage("DEBUG[2] Manager_saveState", 2)
 
@@ -1639,6 +1643,13 @@ Manager_saveWindowState(filename, nm, nv) {
   Debug_logMessage("DEBUG[3] Manager_saveWindowState: loop start wndCount=" . allWndId0, 3)
   Loop, % allWndId0 {
     wndId := allWndId%A_Index%
+
+    ;; Prune ghost handles (abnormal kills never fire WINDOWDESTROYED) so _WindowState.ini self-heals.
+    If Not WinExist("ahk_id " . wndId) {
+      StringReplace, Manager_allWndIds, Manager_allWndIds, %wndId%`;,
+      Continue
+    }
+
     WinGet, wndPName, ProcessName, ahk_id %wndId%
 
     ; wndId;processName;Monitor;Tags;Floating;Decorated;HideTitle;Managed
