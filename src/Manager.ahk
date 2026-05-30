@@ -332,6 +332,14 @@ Return
 ;; on Manager_managedWndIds so duplicate adopts are no-ops.
 Manager_winCreateOrShowDeferred:
   Critical Off
+  ;; Burst is ending — next event after this fire starts fresh. Cleared
+  ;; before Manager_sync so a CREATE/SHOW arriving mid-sync is treated as
+  ;; a new burst (it will re-arm a fresh 50 ms timer) and won't be missed.
+  Manager_clearDebouncedTimerArm("Manager_winCreateOrShowDeferred")
+  ;; Perf wrappers are no-ops unless Perf_enabled (bench mode). bgEventStorm
+  ;; reads the sample count to assert the timer actually fired during a
+  ;; sustained cross-process CREATE/SHOW storm (#86 regression test).
+  Perf_start("Manager_winCreateOrShowDeferred")
   winCreateSyncDummy := ""
   winCreateIsChanged := Manager_sync(winCreateSyncDummy)
   If winCreateIsChanged
@@ -340,6 +348,7 @@ Manager_winCreateOrShowDeferred:
       View_arrange(Manager_aMonitor, Monitor_#%Manager_aMonitor%_aView_#1)
     Bar_updateView(Manager_aMonitor, Monitor_#%Manager_aMonitor%_aView_#1)
   }
+  Perf_end("Manager_winCreateOrShowDeferred")
 Return
 
 ;; Decision matrix for an EVENT_OBJECT_HIDE arrival, factored out of
@@ -709,7 +718,7 @@ Manager_moveWindow() {
 
 Manager_onDisplayChange(a, wParam, uMsg, lParam) {
   Debug_logMessage("DEBUG[1] Manager_onDisplayChange( a: " . a . ", uMsg: " . uMsg . ", wParam: " . wParam . ", lParam: " . lParam . " )", 1)
-  SetTimer, Manager_displayChangeFire, -2000
+  Manager_armDebouncedTimer("Manager_displayChangeFire", 2000)
 }
 
 ;; Debounced handler — fires 2 s after the last WM_DISPLAYCHANGE. Multiple
@@ -884,7 +893,7 @@ Manager_barTitleDispatch(action) {
     SetTimer, Manager_barTitleDeferred, Off
     Bar_updateTitle()
   } Else If (action = "defer")
-    SetTimer, Manager_barTitleDeferred, -50
+    Manager_armDebouncedTimer("Manager_barTitleDeferred", 50)
 }
 
 Manager_onShellMessage(wParam, lParam) {
@@ -1161,7 +1170,7 @@ Manager_onShellMessage(wParam, lParam) {
     ;; after the last event and cleans up HWNDs whose WINDOWDESTROYED
     ;; was missed (event dropped during Manager_hideShow, force-killed
     ;; process, etc.). The timer label has a single-runner guard.
-    SetTimer, Manager_validateAliveTimer, -200
+    Manager_armDebouncedTimer("Manager_validateAliveTimer", 200)
   }
   Perf_end("Manager_onShellMessage_full")
 }
@@ -1273,7 +1282,7 @@ Manager_onObjectShowOrHide(hWinEventHook, event, hwnd, idObject, idChild, idEven
     Return
 
   Manager_taskBarDirty |= (1 << (m - 1))
-  SetTimer, Manager_taskBarSyncDeferred, -50
+  Manager_armDebouncedTimer("Manager_taskBarSyncDeferred", 50)
 }
 
 Manager_registerShellHook() {
@@ -1340,6 +1349,96 @@ Manager_isManagedDestroy(event, idObject, idChild, hwnd) {
   Return (Manager_isManaged(hwnd) != "")
 }
 
+;; Pure decision for the "debounce with maxWait" pattern (canonical
+;; reference: lodash's `_.debounce(fn, wait, { maxWait })`). Returns True
+;; iff the caller should (re)arm the underlying SetTimer, False iff a
+;; previously-armed timer should be left alone so it fires on schedule.
+;;
+;; Without the cap, AHK's `SetTimer, <label>, -N` debounce coalesces a
+;; burst into a single fire — desirable for the common case — but each
+;; event resets the one-shot to "fire N ms from now". Under sustained
+;; arming activity the timer is pushed forward indefinitely and never
+;; fires (#86 — alacritty unmanaged for 46 s on a busy machine until an
+;; unrelated bug.n hotkey unblocked the timer).
+;;
+;; firstArmedTick is A_TickCount at the start of the current burst (0
+;; when no timer is pending). maxDelayMs bounds worst-case fire latency
+;; while preserving the in-burst coalesce benefit. maxDelayMs = 0 disables
+;; the cap (naive debounce — default mode used by every other deferred
+;; timer in Manager.ahk; opt in at a site by passing a positive value
+;; when starvation becomes observable).
+;;
+;; Wraparound: A_TickCount is 32-bit and rolls over every ~49.7 days. A
+;; negative delta indicates the wrap landed inside an active burst; treat
+;; it the same as "cap exceeded" so the pending timer fires and the next
+;; event starts a fresh burst in the new tick range.
+Manager_shouldResetDebouncedTimer(firstArmedTick, now, maxDelayMs) {
+  Local delta
+  ;; `Not firstArmedTick` is the AHK idiom for "0 or uninitialized". In
+  ;; expression mode `"" = 0` evaluates False (empty string isn't pure-
+  ;; numeric — comparison falls back alphabetic), so a literal `= 0`
+  ;; check would treat an uninitialized dynamic global as a stale tick
+  ;; and refuse to ever re-arm. `Not` and `If` treat "" and 0 alike.
+  If Not firstArmedTick
+    Return True
+  If Not maxDelayMs
+    Return True
+  delta := now - firstArmedTick
+  If (delta < 0)
+    Return False
+  Return (delta < maxDelayMs)
+}
+
+;; Re-arm a debounced one-shot SetTimer, label-keyed, implementing the
+;; lodash-style "debounce with maxWait" pattern via
+;; Manager_shouldResetDebouncedTimer above. waitMs is the quiet period
+;; after the last arm; maxWaitMs > 0 bounds worst-case fire latency at
+;; roughly maxWaitMs regardless of further arms (use maxWaitMs = 0, the
+;; default, for the naive form used by every other deferred timer in
+;; Manager.ahk).
+;;
+;; Per-label state lives in dynamic globals named
+;; Manager_debounceTick_<label> so callers can adopt this helper without
+;; coordinating a global per timer. The matching label MUST call
+;; Manager_clearDebouncedTimerArm(label) at entry so the next event after
+;; the fire starts a fresh burst.
+Manager_armDebouncedTimer(label, waitMs, maxWaitMs := 0) {
+  Global
+  Local tickKey, armCountKey, now
+  ;; Side-channel arm counter for benches to verify the hook is actually
+  ;; firing under load (see Bench_bgEventStorm). Unconditional because
+  ;; AHK's RegisterCallback bridge doesn't reliably expose super-globals
+  ;; to nested function calls, so a Manager_isBench gate here reads as
+  ;; False from the hook path and the counter never updates. One global
+  ;; increment per arm is negligible.
+  armCountKey := "Bench_armCount_" . label
+  %armCountKey% := (%armCountKey% + 0) + 1
+  If (maxWaitMs > 0) {
+    tickKey := "Manager_debounceTick_" . label
+    now := A_TickCount
+    If Not Manager_shouldResetDebouncedTimer(%tickKey%, now, maxWaitMs)
+      Return
+    ;; Same `Not` idiom as in shouldReset: uninitialized dynamic globals
+    ;; read as "", which `= 0` does not match in expression mode.
+    If Not %tickKey%
+      %tickKey% := now
+  }
+  SetTimer, % label, % -waitMs
+}
+
+;; Clear the burst marker for a debounced timer armed via
+;; Manager_armDebouncedTimer. Call from the timer's label at entry so the
+;; next event after the fire starts a fresh burst. Only required when the
+;; timer is armed with maxWaitMs > 0; naive-mode arms (maxWaitMs = 0)
+;; record no tick, so flipping a label to a cap later just starts fresh
+;; without inheriting stale state.
+Manager_clearDebouncedTimerArm(label) {
+  Global
+  Local tickKey
+  tickKey := "Manager_debounceTick_" . label
+  %tickKey% := 0
+}
+
 ;; WinEventHook callback. Filter cheaply, defer real work via SetTimer to
 ;; avoid Manager_manage on the message-thread hot path. Mirrors the mutex
 ;; gate in Manager_onShellMessage so production doesn't manage bench
@@ -1370,7 +1469,7 @@ Manager_onWindowCreateOrShow(hWinEventHook, event, hwnd, idObject, idChild, idEv
   If (event = 0x8001) {
     If Manager_isManagedDestroy(event, idObject, idChild, hwnd) {
       Debug_logMessage("DEBUG[1] Manager_onWindowCreateOrShow: DESTROY managed hwnd=" . hwnd . " -- arming validateAlive", 1)
-      SetTimer, Manager_validateAliveTimer, -200
+      Manager_armDebouncedTimer("Manager_validateAliveTimer", 200)
     }
     Return
   }
@@ -1385,11 +1484,14 @@ Manager_onWindowCreateOrShow(hWinEventHook, event, hwnd, idObject, idChild, idEv
     ;; Manager_isManaged inside the classifier canonicalizes against the
     ;; stored format (hex or decimal).
     If (Manager_classifyHideEvent(hwnd) = "queue")
-      SetTimer, Manager_winHideDeferred, -50
+      Manager_armDebouncedTimer("Manager_winHideDeferred", 50)
     Return
   }
-  ;; CREATE or SHOW. Defer; bursts coalesce, re-entrancy avoided.
-  SetTimer, Manager_winCreateOrShowDeferred, -50
+  ;; CREATE or SHOW. Defer via Manager_armDebouncedTimer with a 250 ms
+  ;; maxWait cap so sustained cross-process CREATE/SHOW activity can't
+  ;; starve the sync (#86). The cap is the only site in the file that
+  ;; opts in to maxWait — every other arm uses the naive default of 0.
+  Manager_armDebouncedTimer("Manager_winCreateOrShowDeferred", 50, 250)
 }
 
 Manager_resetMonitorConfiguration() {
