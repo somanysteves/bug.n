@@ -27,7 +27,7 @@ Manager_init()
   doRestore := 0
   If (Config_autoSaveSession = "ask")
   {
-    MsgBox, 0x4, , Would you like to restore an auto-saved session?
+    MsgBox, % (0x4 | 0x1000), , Would you like to restore an auto-saved session?
     IfMsgBox Yes
       doRestore := 1
   }
@@ -480,7 +480,7 @@ Manager_getWindowInfo() {
   } Else
     text .= "`ntags:`t--"
   text .= "`n`nConfig_rule=" aWndClass ";" aWndTitle ";;" Manager_getWindowRule(aWndId)
-  MsgBox, 260, bug.n: Window Information, % text "`n`nCopy text to clipboard?"
+  MsgBox, % (260 | 0x1000), bug.n: Window Information, % text "`n`nCopy text to clipboard?"
   IfMsgBox Yes
     Clipboard := text
 }
@@ -502,7 +502,7 @@ Manager_getWindowList()
     text .= "`n" A_LoopField ":`t" wndTitle
   }
 
-  MsgBox, 260, bug.n: Window List, % text "`n`nCopy text to clipboard?"
+  MsgBox, % (260 | 0x1000), bug.n: Window List, % text "`n`nCopy text to clipboard?"
   IfMsgBox Yes
     Clipboard := text
 }
