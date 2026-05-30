@@ -5,4 +5,4 @@
   Bench_main.ahk via #Include so a release bump touches only this file.
 */
 
-VERSION := "9.3.1"
+VERSION := "9.4.0"
