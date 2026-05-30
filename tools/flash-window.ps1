@@ -29,7 +29,7 @@ param(
   [string] $AncestorProcess,
   [int]    $AncestorPid = $PID,
   [int]    $DelaySeconds = 8,
-  [int]    $Count = 6,
+  [int]    $Count = 1,
   [int]    $TimeoutMs = 500
 )
 
