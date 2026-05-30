@@ -83,6 +83,18 @@ View_cycleDrainRearm() {
   Test_View_cycleDrainRearm_callCount += 1
 }
 
+;; Test-only replacement for Bar_updateTitle (real body in
+;; src/Bar_updateTitle.ahk -- queries the OS foreground window and
+;; mutates a real Gui control). Tests exercising
+;; Manager_barTitleDispatch and the Manager_barTitleDeferred label
+;; assert against this counter.
+Test_Bar_updateTitle_callCount := 0
+
+Bar_updateTitle() {
+  Global Test_Bar_updateTitle_callCount
+  Test_Bar_updateTitle_callCount += 1
+}
+
 ;; Test-only replacement for View_getTiledWndIds. The production
 ;; version (src/View_getTiledWndIds.ahk) filters the view's wndIds
 ;; list with WinExist + Window_isHung, which rejects fake test window
