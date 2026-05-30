@@ -93,6 +93,10 @@ Bench_kick:
     Bench_runTitleStorm()
   Else If (Bench_scenario = "rename")
     Bench_runRename()
+  Else If (Bench_scenario = "bgEventStorm")
+    Bench_runBgEventStorm()
+  Else If (Bench_scenario = "bgEventStormHelper")
+    Bench_runBgEventStormHelper(Bench_iterations)
   Else
     Perf_runBench(Bench_windows, Bench_iterations)
 Return
@@ -126,6 +130,7 @@ Main_evalCommand(command) {
 #Include %A_ScriptDir%\Help.ahk
 #Include %A_ScriptDir%\Manager.ahk
 #Include %A_ScriptDir%\Perf.ahk
+#Include %A_ScriptDir%\Bench_bgEventStorm.ahk
 #Include %A_ScriptDir%\Bench_dispatch.ahk
 #Include %A_ScriptDir%\Bench_rename.ahk
 #Include %A_ScriptDir%\Bench_titleStorm.ahk
