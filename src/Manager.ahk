@@ -876,6 +876,17 @@ Manager_barTitleAction(wParam, lParam, activeWndId) {
   Return "skip"
 }
 
+;; Side-effect dispatch for Manager_barTitleAction's classification.
+;; Split out so the three branches are Yunit-coverable without invoking
+;; the full Manager_onShellMessage path.
+Manager_barTitleDispatch(action) {
+  If (action = "immediate") {
+    SetTimer, Manager_barTitleDeferred, Off
+    Bar_updateTitle()
+  } Else If (action = "defer")
+    SetTimer, Manager_barTitleDeferred, -50
+}
+
 Manager_onShellMessage(wParam, lParam) {
   Local a, action, isChanged, aWndClass, aWndHeight, aWndId, aWndWidth, aWndX, aWndY, benchHandle, i, m, managedKey, t, wndClass, wndId, wndId0, wndIds, wndIsHidden, wndTitle, x, y
   ;; HSHELL_* become global.
@@ -1140,11 +1151,7 @@ Manager_onShellMessage(wParam, lParam) {
     } Else {
       action := "immediate"
     }
-    If (action = "immediate") {
-      SetTimer, Manager_barTitleDeferred, Off
-      Bar_updateTitle()
-    } Else If (action = "defer")
-      SetTimer, Manager_barTitleDeferred, -50
+    Manager_barTitleDispatch(action)
     Perf_end("Manager_onShellMessage")
 
     ;; Defer orphan validation off the shell-event hot path. Using a

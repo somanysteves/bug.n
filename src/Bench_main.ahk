@@ -120,6 +120,7 @@ Main_evalCommand(command) {
 
 #Include %A_ScriptDir%\App.ahk
 #Include %A_ScriptDir%\Bar.ahk
+#Include %A_ScriptDir%\Bar_updateTitle.ahk
 #Include %A_ScriptDir%\Config.ahk
 #Include %A_ScriptDir%\Debug.ahk
 #Include %A_ScriptDir%\Help.ahk
