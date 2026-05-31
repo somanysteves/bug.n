@@ -19,7 +19,7 @@ left 'Windows key' and the 'Control key' and the 'Q key'
 
 ### Window management
 
-`Config_hotkey=#Down::View_activateWindow(0, +1)`
+`Config_hotkey=#j::View_activateWindow(0, +1)`
 
 _Activate_ the _next_ window in the active view.
 
@@ -29,17 +29,17 @@ window, which is the window in the master area, if you are using the default
 settings for the tile layout.
 
 -------------------------------------------------------------------------------
-`Config_hotkey=#Up::View_activateWindow(0, -1)`
+`Config_hotkey=#k::View_activateWindow(0, -1)`
 
 _Activate_ the _previous_ window in the active view.
 
 -------------------------------------------------------------------------------
-`Config_hotkey=#+Down::View_shuffleWindow(0, +1)`
+`Config_hotkey=#+j::View_shuffleWindow(0, +1)`
 
 _Move_ the active window _to the next position_ in the window list of the view.
 
 -------------------------------------------------------------------------------
-`Config_hotkey=#+Up::View_shuffleWindow(0, -1)`
+`Config_hotkey=#+k::View_shuffleWindow(0, -1)`
 
 _Move_ the active window _to the previous position_ in the window list of the
 view.
@@ -54,7 +54,7 @@ view.
 window list by using the first parameter.
 
 -------------------------------------------------------------------------------
-`Config_hotkey=#c::Manager_closeWindow()`
+`Config_hotkey=#+c::Manager_closeWindow()`
 
 _Close_ the active window.
 
@@ -72,14 +72,14 @@ _Toggle_ the _floating status_ of the active window.
 regard it).
 
 -------------------------------------------------------------------------------
-`Config_hotkey=#^m::Manager_minimizeWindow()`
+`Config_hotkey=#+n::Manager_minimizeWindow()`
 
 _Minimize_ the active window.
 
 > This implicitly sets the window to be floating.
 
 -------------------------------------------------------------------------------
-`Config_hotkey=#+m::Manager_moveWindow()`
+`Config_hotkey=#^m::Manager_moveWindow()`
 
 _Move_ the active window _by key_.
 
@@ -93,7 +93,7 @@ _Resize_ the active window _by key_.
 > This implicitly sets the window to be floating.
 
 -------------------------------------------------------------------------------
-`Config_hotkey=#+x::Manager_maximizeWindow()`
+`Config_hotkey=#+m::Manager_maximizeWindow()`
 
 _Move and resize_ the active window _to_ the size of the _work area_.
 
@@ -115,14 +115,14 @@ _Get a window list_ for the active view.
 > The list contains information about the window id, title and class.
 
 -------------------------------------------------------------------------------
-`Config_hotkey=!Down::View_moveWindow(0, +1)`
+`Config_hotkey=!j::View_moveWindow(0, +1)`
 
 Manually _move_ the active window _to the next area_ in the layout.
 
 > This has only an effect, if dynamic tiling is disabled (`Config_dynamicTiling=0`).
 
 -------------------------------------------------------------------------------
-`Config_hotkey=!Up::View_moveWindow(0, -1)`
+`Config_hotkey=!k::View_moveWindow(0, -1)`
 
 Manually _move_ the active window _to the previous area_ in the layout.
 
@@ -130,7 +130,7 @@ Manually _move_ the active window _to the previous area_ in the layout.
 (`Config_dynamicTiling=0`).
 
 -------------------------------------------------------------------------------
-`Config_hotkey=!+Enter::Manager_maximizeWindow()`
+`Config_hotkey=!+m::Manager_maximizeWindow()`
 
 _Move and resize_ the active window _to_ the size of the _work area_.
 
@@ -170,7 +170,7 @@ _Dump_ window information on the _managed windows_ to the log.
 views.
 
 -------------------------------------------------------------------------------
-`Config_hotkey=#^h::Debug_logHelp()`
+`Config_hotkey=#^+h::Debug_logHelp()`
 
 _Print column headings_ to the log.
 
@@ -470,12 +470,12 @@ _the previous monitor_ in a multi-monitor environment.
 
 ### GUI management
 
-`Config_hotkey=#+Space::Monitor_toggleBar()`
+`Config_hotkey=#^b::Monitor_toggleBar()`
 
 _Hide / Show the bar_ (bug.n status bar) on the active monitor.
 
 -------------------------------------------------------------------------------
-`Config_hotkey=#Space::Monitor_toggleTaskBar()`
+`Config_hotkey=#b::Monitor_toggleTaskBar()`
 
 Hide / Show the task bar.
 
@@ -535,6 +535,6 @@ If `Config_autoSaveSession` is not set to `off`, the window lists can be
 restored and windows are put to their associated monitor and views.
 
 -------------------------------------------------------------------------------
-`Config_hotkey=#^q::ExitApp`
+`Config_hotkey=#+q::ExitApp`
 
 _Quit_ bug.n, restore the default Windows UI and show all windows.
