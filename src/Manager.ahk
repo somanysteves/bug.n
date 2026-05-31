@@ -2475,7 +2475,7 @@ Manager_clearUrgentWindow(wndId) {
 ;; flag set. Walks View_#m_#i_wndIds and flips View_#m_#i_isUrgent if
 ;; it diverges from that truth, refreshing the bar entry on change.
 Manager_recomputeViewUrgent(m, i) {
-  Global
+  Local wndIds, stillUrgent
 
   StringTrimRight, wndIds, View_#%m%_#%i%_wndIds, 1
   stillUrgent := False
