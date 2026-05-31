@@ -34,10 +34,8 @@ View_activateWindow_now(i, d) {
   Debug_logMessage("DEBUG[2] wndId count: " . wndId0, 2, False)
   If (i > 0) And (i <= wndId0) And (d = 0) {
     wndId := wndId%i%
-    Window_set(wndId, "AlwaysOnTop", "On")
-    Window_set(wndId, "AlwaysOnTop", "Off")
     Window_#%wndId%_isMinimized := False
-    Manager_winActivate(wndId)
+    View_activateWithRaise(wndId)
   } Else If (wndId0 > 1) {
     If Not InStr(Manager_managedWndIds, aWndId . ";") Or Window_#%aWndId%_isFloating
       Window_set(aWndId, "Bottom", "")
@@ -59,7 +57,9 @@ View_activateWindow_now(i, d) {
       wndId := wndId%i%
       If Not Window_#%wndId%_isMinimized {
         ;; If there are hung windows on the screen, we still want to be able to cycle through them.
-        failure := Manager_winActivate(wndId)
+        ;; View_activateWithRaise (vs bare Manager_winActivate) flips AlwaysOnTop to force Z-order
+        ;; against same-position peers -- needed in monocle, where all tiled windows share coords (#94).
+        failure := View_activateWithRaise(wndId)
         If Not failure
           Break
       }
