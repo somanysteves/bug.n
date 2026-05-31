@@ -2261,7 +2261,7 @@ Manager_unmanage(wndId) {
   ;; Dequeue from the Win+U cycle — a stale entry would survive into
   ;; the next press and operate on a window whose _monitor / _tags
   ;; globals are about to be wiped (issue #69).
-  StringReplace, Manager_urgentWndIds, Manager_urgentWndIds, %wndId%`;, , All
+  Manager_dequeueUrgent(wndId)
   Window_#%wndId%_monitor     :=
   Window_#%wndId%_tags        :=
   Window_#%wndId%_isDecorated :=
@@ -2360,8 +2360,45 @@ Manager_markUrgent(wndId) {
   ;; Append to the cycle queue so Win+U can walk every pending urgent
   ;; in mark-order (issue #69). Dedupe re-flashes: a noisy app blinking
   ;; 5x should be one queue entry, not five (AwesomeWM semantics).
-  If marked And Not InStr(Manager_urgentWndIds, wndId . ";")
+  If marked And Not Manager_isInUrgentQueue(wndId)
     Manager_urgentWndIds .= wndId . ";"
+}
+
+;; Delimiter-aware membership check for Manager_urgentWndIds. Mirrors
+;; Manager_isManaged's loop+PARSE numeric-compare so a naive substring
+;; match can't false-positive across suffix-colliding HWNDs (e.g.
+;; mistaking "12;" for being inside "412;"). Numeric compare also
+;; handles the hex-vs-decimal storage drift between production
+;; (typically hex) and Yunit tests (decimal).
+Manager_isInUrgentQueue(wndId) {
+  Global Manager_urgentWndIds
+
+  target := wndId + 0
+  StringTrimRight, trimmed, Manager_urgentWndIds, 1
+  Loop, PARSE, trimmed, `;
+  {
+    If A_LoopField And ((A_LoopField + 0) = target)
+      Return True
+  }
+  Return False
+}
+
+;; Delimiter-aware removal for Manager_urgentWndIds. Rebuilds the queue
+;; without entries that numerically equal wndId — naive StringReplace
+;; corrupted suffix-sharing neighbors ("412;12;" minus "12;" became "4")
+;; and could silently land Win+U on the wrong window.
+Manager_dequeueUrgent(wndId) {
+  Global Manager_urgentWndIds
+
+  target := wndId + 0
+  newQueue := ""
+  StringTrimRight, trimmed, Manager_urgentWndIds, 1
+  Loop, PARSE, trimmed, `;
+  {
+    If A_LoopField And ((A_LoopField + 0) != target)
+      newQueue .= A_LoopField . ";"
+  }
+  Manager_urgentWndIds := newQueue
 }
 
 ;; Win+U: pop the oldest entry from Manager_urgentWndIds belonging to
@@ -2426,7 +2463,7 @@ Manager_clearUrgentWindow(wndId) {
   Global Config_viewCount, Manager_urgentWndIds
 
   Window_#%wndId%_isUrgent := False
-  StringReplace, Manager_urgentWndIds, Manager_urgentWndIds, %wndId%`;, , All
+  Manager_dequeueUrgent(wndId)
   wndMon := Window_#%wndId%_monitor
   Loop, % Config_viewCount {
     If (Window_#%wndId%_tags & 1 << A_Index - 1)

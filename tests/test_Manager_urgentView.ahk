@@ -664,4 +664,61 @@ class TestManagerUrgentView
       , "View 2 should drop urgency when its only urgent window is "
       . "unmanaged; got '" . View_#1_#2_isUrgent . "'")
   }
+
+  ;; --- Suffix-collision regressions (Copilot review on PR #92) ---
+  ;;
+  ;; The naive `InStr(queue, wndId . ";")` dedupe and `StringReplace ...
+  ;; wndId;` dequeue see "12;" as a hit inside "412;" because they
+  ;; aren't delimiter-aware. With concurrent HWNDs that share suffixes
+  ;; (production HWNDs come from Win32 and can be anything), the dedupe
+  ;; would silently drop new urgents and the dequeue would corrupt
+  ;; neighbors. Mirror Manager_isManaged's loop+PARSE numeric-compare
+  ;; pattern so neither failure mode is possible.
+
+  MarkUrgent_DoesNotDedupeOnSuffixCollision()
+  {
+    Global
+
+    ;; "12" enqueued while queue contains "412;" must NOT be dropped as
+    ;; a substring hit. Order: mark 412 first (queue = "412;"), then mark
+    ;; 12; the naive InStr("412;", "12;") returns a non-zero position
+    ;; and the dedupe wrongly skips the append.
+    Window_#412_tags    := 1 << 1
+    Window_#412_monitor := 1
+    Window_#12_tags     := 1 << 1
+    Window_#12_monitor  := 1
+    View_#1_#2_wndIds   := "412;12;"
+
+    Manager_markUrgent(412)
+    Manager_markUrgent(12)
+
+    Yunit.Assert(Manager_urgentWndIds = "412;12;"
+      , "Both 412 and 12 should be enqueued (suffix collision must not "
+      . "falsely dedupe); got '" . Manager_urgentWndIds . "'")
+  }
+
+  Unmanage_DequeueDoesNotCorruptSuffixCollidingNeighbors()
+  {
+    Global
+
+    ;; Queue is "412;12;" (set directly to isolate the unmanage code path
+    ;; from the dedupe one). Unmanaging 12 must leave "412;" intact — a
+    ;; naive StringReplace(queue, "12;", "") would strip "12;" out of
+    ;; "412;" too, leaving the queue as "4;".
+    Window_#412_tags     := 1 << 1
+    Window_#412_monitor  := 1
+    Window_#412_isUrgent := True
+    Window_#12_tags      := 1 << 1
+    Window_#12_monitor   := 1
+    Window_#12_isUrgent  := True
+    View_#1_#2_wndIds    := "412;12;"
+    View_#1_#2_isUrgent  := True
+    Manager_urgentWndIds := "412;12;"
+
+    Manager_unmanage(12)
+
+    Yunit.Assert(Manager_urgentWndIds = "412;"
+      , "Unmanaging 12 must leave 412 intact in the queue (no substring "
+      . "corruption); got '" . Manager_urgentWndIds . "'")
+  }
 }

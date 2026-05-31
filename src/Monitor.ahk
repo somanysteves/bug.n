@@ -92,7 +92,7 @@ Monitor_activateView(i, d = 0, clearUrgency = True) {
           Window_#%A_LoopField%_isUrgent := False
           ;; Dequeue from the Win+U cycle — landing on the view counts
           ;; as the user having seen these flashes (issue #69).
-          StringReplace, Manager_urgentWndIds, Manager_urgentWndIds, %A_LoopField%`;, , All
+          Manager_dequeueUrgent(A_LoopField)
         }
       }
     }
