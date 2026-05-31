@@ -36,7 +36,7 @@ Monitor_init(m, doRestore) {
   Bar_init(m)
 }
 
-Monitor_activateView(i, d = 0) {
+Monitor_activateView(i, d = 0, clearUrgency = True) {
   Local aMonitor, aView, aWndId, detectHidden, m, n, wndId, wndIds
 
   Perf_start("Monitor_activateView")
@@ -83,13 +83,17 @@ Monitor_activateView(i, d = 0) {
     ;; Runs per-monitor so syncMonitorViews clears every monitor that is being
     ;; pulled onto view i, not just aMonitor.
     Perf_start("Monitor_activateView_urgency")
-    If View_#%m%_#%i%_isUrgent {
+    If clearUrgency And View_#%m%_#%i%_isUrgent {
       View_#%m%_#%i%_isUrgent := False
       StringTrimRight, wndIds, View_#%m%_#%i%_wndIds, 1
       Loop, PARSE, wndIds, `;
       {
-        If A_LoopField
+        If A_LoopField {
           Window_#%A_LoopField%_isUrgent := False
+          ;; Dequeue from the Win+U cycle — landing on the view counts
+          ;; as the user having seen these flashes (issue #69).
+          Manager_dequeueUrgent(A_LoopField)
+        }
       }
     }
     Perf_end("Monitor_activateView_urgency")

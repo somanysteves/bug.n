@@ -26,6 +26,7 @@ class TestManagerUrgentView
 
     Manager_aMonitor      := 1
     Manager_managedWndIds := "1001;1002;"
+    Manager_urgentWndIds  := ""
     Manager_hideShow      := False
     Monitor_#1_aView_#1   := 1
     Monitor_#1_aView_#2   := 1
@@ -66,6 +67,7 @@ class TestManagerUrgentView
 
     Manager_aMonitor      := ""
     Manager_managedWndIds := ""
+    Manager_urgentWndIds  := ""
     Manager_hideShow      := ""
     Monitor_#1_aView_#1   := ""
     Monitor_#1_aView_#2   := ""
@@ -344,6 +346,8 @@ class TestManagerUrgentView
     Window_#1001_tags := 1 << 1
     View_#1_#2_wndIds := "1001;"
     View_#1_#2_isUrgent := True
+    Window_#1001_isUrgent := True
+    Manager_urgentWndIds  := "1001;"
 
     Manager_activateUrgentView()
 
@@ -374,6 +378,7 @@ class TestManagerUrgentView
     View_#1_#3_isUrgent := True
     Window_#1001_isUrgent := True
     Window_#1002_isUrgent := True
+    Manager_urgentWndIds  := "1001;1002;"
 
     Manager_activateUrgentView()
     Yunit.Assert(Monitor_#1_aView_#1 = 2
@@ -405,6 +410,7 @@ class TestManagerUrgentView
     View_#1_#2_aWndIds    := "1001;1002;0;"
     View_#1_#2_isUrgent   := True
     Window_#1002_isUrgent := True
+    Manager_urgentWndIds  := "1002;"
 
     Manager_activateUrgentView()
 
@@ -415,5 +421,304 @@ class TestManagerUrgentView
       . "View_#1_#2_aWndIds so Manager_winActivate focuses it, not the "
       . "previously-active 1001; got View_#1_#2_aWndIds = '"
       . View_#1_#2_aWndIds . "'")
+  }
+
+  ;; --- Manager_urgentWndIds queue (issue #69) ---
+  ;;
+  ;; Manager_markUrgent must append to a chronological queue so that
+  ;; repeated Win+U presses can walk every urgent window in mark-order —
+  ;; including multiple urgents on the same view, which the old
+  ;; per-view-clear model collapsed into a single focus event.
+
+  MarkUrgent_AppendsWindowToUrgentQueue()
+  {
+    Global
+
+    Window_#1001_tags := 1 << 1
+    View_#1_#2_wndIds := "1001;"
+
+    Manager_markUrgent(1001)
+
+    Yunit.Assert(Manager_urgentWndIds = "1001;"
+      , "markUrgent should enqueue 1001; got Manager_urgentWndIds = '"
+      . Manager_urgentWndIds . "'")
+  }
+
+  MarkUrgent_AppendsMultipleWindowsInMarkOrder()
+  {
+    Global
+
+    Window_#1001_tags := 1 << 1
+    Window_#1002_tags := 1 << 2
+    View_#1_#2_wndIds := "1001;"
+    View_#1_#3_wndIds := "1002;"
+
+    Manager_markUrgent(1001)
+    Manager_markUrgent(1002)
+
+    Yunit.Assert(Manager_urgentWndIds = "1001;1002;"
+      , "Queue should preserve mark order (1001 before 1002); got '"
+      . Manager_urgentWndIds . "'")
+  }
+
+  MarkUrgent_DedupesRepeatFlashOfSameWindow()
+  {
+    Global
+
+    ;; A noisy app flashing 3x must not produce 3 queue entries — one
+    ;; "this client wants attention" flag, not a counter (AwesomeWM model).
+    Window_#1001_tags := 1 << 1
+    View_#1_#2_wndIds := "1001;"
+
+    Manager_markUrgent(1001)
+    Manager_markUrgent(1001)
+    Manager_markUrgent(1001)
+
+    Yunit.Assert(Manager_urgentWndIds = "1001;"
+      , "Repeated flashes of the same window must dedupe to one queue entry; "
+      . "got '" . Manager_urgentWndIds . "'")
+  }
+
+  MarkUrgent_DoesNotEnqueueWindowOnlyOnActiveView()
+  {
+    Global
+
+    ;; Window only tagged on the active view → markUrgent already skips
+    ;; setting the urgent flag (MarkUrgent_DoesNotMarkActiveView). The
+    ;; queue must mirror that: nothing to surface, nothing to enqueue.
+    Window_#1001_tags := 1 << 0
+    View_#1_#1_wndIds := "1001;"
+
+    Manager_markUrgent(1001)
+
+    Yunit.Assert(Manager_urgentWndIds = ""
+      , "Window only on active view should not enqueue; got '"
+      . Manager_urgentWndIds . "'")
+  }
+
+  ;; --- Win+U cycle through same-view urgents (issue #69 core) ---
+
+  ActivateUrgentView_CyclesThroughMultipleUrgentsOnSameView()
+  {
+    Global
+
+    ;; Two windows on view 2 both flash while user is on view 1. First
+    ;; Win+U should focus 1001, leave view 2 still urgent (1002 pending);
+    ;; second Win+U should focus 1002, drop view 2's urgency.
+    Window_#1001_tags := 1 << 1
+    Window_#1002_tags := 1 << 1
+    View_#1_#2_wndIds := "1001;1002;"
+
+    Manager_markUrgent(1001)
+    Manager_markUrgent(1002)
+
+    Manager_activateUrgentView()
+    Yunit.Assert(Monitor_#1_aView_#1 = 2
+      , "First press should land on view 2; got " . Monitor_#1_aView_#1)
+    Yunit.Assert(SubStr(View_#1_#2_aWndIds, 1, 5) = "1001;"
+      , "First press should promote 1001 to head of aWndIds; got '"
+      . View_#1_#2_aWndIds . "'")
+    Yunit.Assert(Window_#1001_isUrgent = False
+      , "First press should clear 1001's urgent flag; got '"
+      . Window_#1001_isUrgent . "'")
+    Yunit.Assert(Window_#1002_isUrgent = True
+      , "First press must NOT clear sibling 1002's urgent flag; got '"
+      . Window_#1002_isUrgent . "'")
+    Yunit.Assert(View_#1_#2_isUrgent = True
+      , "View 2 must stay urgent while 1002 is still pending; got '"
+      . View_#1_#2_isUrgent . "'")
+    Yunit.Assert(Manager_urgentWndIds = "1002;"
+      , "First press should dequeue 1001 only; got '"
+      . Manager_urgentWndIds . "'")
+
+    Manager_activateUrgentView()
+    Yunit.Assert(Monitor_#1_aView_#1 = 2
+      , "Second press stays on view 2; got " . Monitor_#1_aView_#1)
+    Yunit.Assert(SubStr(View_#1_#2_aWndIds, 1, 5) = "1002;"
+      , "Second press should promote 1002 to head of aWndIds; got '"
+      . View_#1_#2_aWndIds . "'")
+    Yunit.Assert(Window_#1002_isUrgent = False
+      , "Second press should clear 1002's urgent flag; got '"
+      . Window_#1002_isUrgent . "'")
+    Yunit.Assert(View_#1_#2_isUrgent = False
+      , "View 2 should drop urgency after last urgent window is focused; got '"
+      . View_#1_#2_isUrgent . "'")
+    Yunit.Assert(Manager_urgentWndIds = ""
+      , "Queue should be drained; got '" . Manager_urgentWndIds . "'")
+  }
+
+  ActivateUrgentView_ConsumesQueueInMarkOrderAcrossViews()
+  {
+    Global
+
+    ;; 1001 on view 2 marked first; 1002 on view 3 marked second. Mark
+    ;; order — not view-scan order — should drive Win+U.
+    Window_#1001_tags := 1 << 1
+    Window_#1002_tags := 1 << 2
+    View_#1_#2_wndIds := "1001;"
+    View_#1_#3_wndIds := "1002;"
+
+    Manager_markUrgent(1001)
+    Manager_markUrgent(1002)
+
+    Manager_activateUrgentView()
+    Yunit.Assert(Monitor_#1_aView_#1 = 2
+      , "First press follows mark order → view 2 (for 1001); got "
+      . Monitor_#1_aView_#1)
+
+    Manager_activateUrgentView()
+    Yunit.Assert(Monitor_#1_aView_#1 = 3
+      , "Second press → view 3 (for 1002); got " . Monitor_#1_aView_#1)
+    Yunit.Assert(Manager_urgentWndIds = ""
+      , "Queue drained after both presses; got '" . Manager_urgentWndIds . "'")
+  }
+
+  ActivateUrgentView_NoopWhenQueueEmpty()
+  {
+    Global
+
+    ;; Default Begin() state: no urgents anywhere, empty queue.
+    Manager_activateUrgentView()
+
+    Yunit.Assert(Monitor_#1_aView_#1 = 1
+      , "Empty queue: aView should stay 1; got " . Monitor_#1_aView_#1)
+  }
+
+  ;; --- Manual view switch dequeues windows it bulk-clears ---
+
+  ActivateView_ManualSwitchDequeuesClearedWindows()
+  {
+    Global
+
+    ;; If the user manually jumps to view 2 (Win+2, bar click), the
+    ;; bulk-clear still fires AND the queue must lose those windows —
+    ;; otherwise the next Win+U would try to focus a window whose
+    ;; _isUrgent flag is already False, doing the wrong thing.
+    Window_#1001_tags := 1 << 1
+    Window_#1002_tags := 1 << 1
+    View_#1_#2_wndIds := "1001;1002;"
+
+    Manager_markUrgent(1001)
+    Manager_markUrgent(1002)
+
+    Monitor_activateView(2)
+
+    Yunit.Assert(View_#1_#2_isUrgent = False
+      , "Manual switch should still bulk-clear view 2 urgency; got '"
+      . View_#1_#2_isUrgent . "'")
+    Yunit.Assert(Window_#1001_isUrgent = False
+      , "Manual switch should clear 1001 urgency; got '"
+      . Window_#1001_isUrgent . "'")
+    Yunit.Assert(Window_#1002_isUrgent = False
+      , "Manual switch should clear 1002 urgency; got '"
+      . Window_#1002_isUrgent . "'")
+    Yunit.Assert(Manager_urgentWndIds = ""
+      , "Manual switch must dequeue every window it bulk-cleared; got '"
+      . Manager_urgentWndIds . "'")
+  }
+
+  ;; --- Unmanage path housekeeping ---
+
+  Unmanage_RemovesWindowFromUrgentQueue()
+  {
+    Global
+
+    ;; Window destroyed while in the queue → stale entry would survive
+    ;; into the next Win+U press, which would try to operate on a
+    ;; window whose _monitor / _tags globals are already wiped.
+    Window_#1001_tags     := 1 << 1
+    Window_#1001_monitor  := 1
+    View_#1_#2_wndIds     := "1001;"
+
+    Manager_markUrgent(1001)
+    Yunit.Assert(Manager_urgentWndIds = "1001;"
+      , "Precondition: queue should contain 1001 after markUrgent; got '"
+      . Manager_urgentWndIds . "'")
+
+    Manager_unmanage(1001)
+
+    Yunit.Assert(Manager_urgentWndIds = ""
+      , "unmanage(1001) must remove it from the urgent queue; got '"
+      . Manager_urgentWndIds . "'")
+  }
+
+  Unmanage_RecomputesViewUrgentWhenLastUrgentLeaves()
+  {
+    Global
+
+    ;; 1001 is the only urgent on view 2. Destroying it should drop
+    ;; view 2's _isUrgent flag — otherwise the bar stays red forever
+    ;; with no underlying window to surface.
+    Window_#1001_tags     := 1 << 1
+    Window_#1001_monitor  := 1
+    View_#1_#2_wndIds     := "1001;"
+
+    Manager_markUrgent(1001)
+    Yunit.Assert(View_#1_#2_isUrgent = True
+      , "Precondition: view 2 urgent after markUrgent; got '"
+      . View_#1_#2_isUrgent . "'")
+
+    Manager_unmanage(1001)
+
+    Yunit.Assert(View_#1_#2_isUrgent = False
+      , "View 2 should drop urgency when its only urgent window is "
+      . "unmanaged; got '" . View_#1_#2_isUrgent . "'")
+  }
+
+  ;; --- Suffix-collision regressions (Copilot review on PR #92) ---
+  ;;
+  ;; The naive `InStr(queue, wndId . ";")` dedupe and `StringReplace ...
+  ;; wndId;` dequeue see "12;" as a hit inside "412;" because they
+  ;; aren't delimiter-aware. With concurrent HWNDs that share suffixes
+  ;; (production HWNDs come from Win32 and can be anything), the dedupe
+  ;; would silently drop new urgents and the dequeue would corrupt
+  ;; neighbors. Mirror Manager_isManaged's loop+PARSE numeric-compare
+  ;; pattern so neither failure mode is possible.
+
+  MarkUrgent_DoesNotDedupeOnSuffixCollision()
+  {
+    Global
+
+    ;; "12" enqueued while queue contains "412;" must NOT be dropped as
+    ;; a substring hit. Order: mark 412 first (queue = "412;"), then mark
+    ;; 12; the naive InStr("412;", "12;") returns a non-zero position
+    ;; and the dedupe wrongly skips the append.
+    Window_#412_tags    := 1 << 1
+    Window_#412_monitor := 1
+    Window_#12_tags     := 1 << 1
+    Window_#12_monitor  := 1
+    View_#1_#2_wndIds   := "412;12;"
+
+    Manager_markUrgent(412)
+    Manager_markUrgent(12)
+
+    Yunit.Assert(Manager_urgentWndIds = "412;12;"
+      , "Both 412 and 12 should be enqueued (suffix collision must not "
+      . "falsely dedupe); got '" . Manager_urgentWndIds . "'")
+  }
+
+  Unmanage_DequeueDoesNotCorruptSuffixCollidingNeighbors()
+  {
+    Global
+
+    ;; Queue is "412;12;" (set directly to isolate the unmanage code path
+    ;; from the dedupe one). Unmanaging 12 must leave "412;" intact — a
+    ;; naive StringReplace(queue, "12;", "") would strip "12;" out of
+    ;; "412;" too, leaving the queue as "4;".
+    Window_#412_tags     := 1 << 1
+    Window_#412_monitor  := 1
+    Window_#412_isUrgent := True
+    Window_#12_tags      := 1 << 1
+    Window_#12_monitor   := 1
+    Window_#12_isUrgent  := True
+    View_#1_#2_wndIds    := "412;12;"
+    View_#1_#2_isUrgent  := True
+    Manager_urgentWndIds := "412;12;"
+
+    Manager_unmanage(12)
+
+    Yunit.Assert(Manager_urgentWndIds = "412;"
+      , "Unmanaging 12 must leave 412 intact in the queue (no substring "
+      . "corruption); got '" . Manager_urgentWndIds . "'")
   }
 }

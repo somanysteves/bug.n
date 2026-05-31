@@ -61,6 +61,7 @@ Manager_init()
   Manager_allWndIds        := ""
   Manager_managedWndIds    := ""
   Manager_pendingHideWndIds := ""
+  Manager_urgentWndIds     := ""
   Manager_initial_sync(doRestore)
 
   Bar_updateStatus()
@@ -2248,10 +2249,19 @@ Manager_unmanage(wndId) {
       If (Window_#%wndId%_tags & 1 << A_Index - 1) {
         StringReplace, View_#%m%_#%A_Index%_wndIds, View_#%m%_#%A_Index%_wndIds, % wndId ";",, All
         StringReplace, View_#%m%_#%A_Index%_aWndIds, View_#%m%_#%A_Index%_aWndIds, % wndId ";",, All
+        ;; If the unmanaged window was the only urgent on this view, drop
+        ;; the view's urgency flag — otherwise the bar stays red with
+        ;; no underlying window to surface (issue #69).
+        If View_#%m%_#%A_Index%_isUrgent
+          Manager_recomputeViewUrgent(m, A_Index)
         Bar_updateView(m, A_Index)
       }
     }
   }
+  ;; Dequeue from the Win+U cycle — a stale entry would survive into
+  ;; the next press and operate on a window whose _monitor / _tags
+  ;; globals are about to be wiped (issue #69).
+  Manager_dequeueUrgent(wndId)
   Window_#%wndId%_monitor     :=
   Window_#%wndId%_tags        :=
   Window_#%wndId%_isDecorated :=
@@ -2333,57 +2343,151 @@ Manager_isManaged(wndId) {
 ;; entry. Active view is skipped — if the user is already looking at the
 ;; window, there is nothing to draw attention to.
 Manager_markUrgent(wndId) {
-  Global Config_viewCount
+  Global Config_viewCount, Manager_urgentWndIds
 
   wndMon := Window_#%wndId%_monitor
   aView  := Monitor_#%wndMon%_aView_#1
+  marked := False
   Loop, % Config_viewCount {
     viewBit := 1 << (A_Index - 1)
     If (Window_#%wndId%_tags & viewBit) And Not (A_Index = aView) {
       Window_#%wndId%_isUrgent           := True
       View_#%wndMon%_#%A_Index%_isUrgent := True
       Bar_updateView(wndMon, A_Index)
+      marked := True
     }
+  }
+  ;; Append to the cycle queue so Win+U can walk every pending urgent
+  ;; in mark-order (issue #69). Dedupe re-flashes: a noisy app blinking
+  ;; 5x should be one queue entry, not five (AwesomeWM semantics).
+  If marked And Not Manager_isInUrgentQueue(wndId)
+    Manager_urgentWndIds .= wndId . ";"
+}
+
+;; Delimiter-aware membership check for Manager_urgentWndIds. Mirrors
+;; Manager_isManaged's loop+PARSE numeric-compare so a naive substring
+;; match can't false-positive across suffix-colliding HWNDs (e.g.
+;; mistaking "12;" for being inside "412;"). Numeric compare also
+;; handles the hex-vs-decimal storage drift between production
+;; (typically hex) and Yunit tests (decimal).
+Manager_isInUrgentQueue(wndId) {
+  Global Manager_urgentWndIds
+
+  target := wndId + 0
+  StringTrimRight, trimmed, Manager_urgentWndIds, 1
+  Loop, PARSE, trimmed, `;
+  {
+    If A_LoopField And ((A_LoopField + 0) = target)
+      Return True
+  }
+  Return False
+}
+
+;; Delimiter-aware removal for Manager_urgentWndIds. Rebuilds the queue
+;; without entries that numerically equal wndId — naive StringReplace
+;; corrupted suffix-sharing neighbors ("412;12;" minus "12;" became "4")
+;; and could silently land Win+U on the wrong window.
+Manager_dequeueUrgent(wndId) {
+  Global Manager_urgentWndIds
+
+  target := wndId + 0
+  newQueue := ""
+  StringTrimRight, trimmed, Manager_urgentWndIds, 1
+  Loop, PARSE, trimmed, `;
+  {
+    If A_LoopField And ((A_LoopField + 0) != target)
+      newQueue .= A_LoopField . ";"
+  }
+  Manager_urgentWndIds := newQueue
+}
+
+;; Win+U: pop the oldest entry from Manager_urgentWndIds belonging to
+;; the active monitor, switch to its view without clearing sibling
+;; urgents on that view (Monitor_activateView's third arg = False),
+;; promote it to the head of aWndIds, focus it, and clear only its
+;; own _isUrgent flag. Repeated presses walk the queue in mark-order —
+;; including multiple urgents on the same view (issue #69).
+;;
+;; Scope is monitor-local in v1; cross-monitor cycling is tracked
+;; separately in issue #91.
+Manager_activateUrgentView() {
+  Global Config_viewCount, Manager_aMonitor, Manager_urgentWndIds
+
+  aMonitor    := Manager_aMonitor
+  urgentWndId := ""
+  StringTrimRight, queue, Manager_urgentWndIds, 1
+  Loop, PARSE, queue, `;
+  {
+    If A_LoopField And (Window_#%A_LoopField%_monitor = aMonitor) {
+      urgentWndId := A_LoopField
+      Break
+    }
+  }
+  If Not urgentWndId
+    Return
+
+  ;; Pick the first tagged view that isn't already active. If the
+  ;; window only lives on the active view, just focus it in-place.
+  aView    := Monitor_#%aMonitor%_aView_#1
+  destView := 0
+  Loop, % Config_viewCount {
+    If (Window_#%urgentWndId%_tags & 1 << A_Index - 1) And Not (A_Index = aView) {
+      destView := A_Index
+      Break
+    }
+  }
+  If Not destView
+    destView := aView
+
+  ;; Promote first so Monitor_activateView's final winActivate resolves
+  ;; to the urgent window, not whichever was most-recently-active.
+  View_setActiveWindow(aMonitor, destView, urgentWndId)
+  If (destView != aView)
+    Monitor_activateView(destView, 0, False)
+
+  Manager_clearUrgentWindow(urgentWndId)
+
+  ;; Pre-show via SW_SHOWNA so WinActivate has a visible target. Skip if
+  ;; hung — ShowWindow can block, and Manager_winActivate would no-op on
+  ;; a hung target anyway (Window_activate's Window_isHung guard).
+  If Not Window_isHung(urgentWndId)
+    DllCall("ShowWindow", "Ptr", urgentWndId, "Int", 8)
+  Manager_winActivate(urgentWndId)
+}
+
+;; Clear a single window's urgency: drop its flag, dequeue from the
+;; Win+U cycle, and recompute the view-level _isUrgent flag for every
+;; view the window was tagged on (a view stays urgent if any of its
+;; other windows are still urgent).
+Manager_clearUrgentWindow(wndId) {
+  Global Config_viewCount, Manager_urgentWndIds
+
+  Window_#%wndId%_isUrgent := False
+  Manager_dequeueUrgent(wndId)
+  wndMon := Window_#%wndId%_monitor
+  Loop, % Config_viewCount {
+    If (Window_#%wndId%_tags & 1 << A_Index - 1)
+      Manager_recomputeViewUrgent(wndMon, A_Index)
   }
 }
 
-;; Win+U: jump to the first urgent view on the active monitor, scanning
-;; from the next view onward (wrap-around). Repeated presses cycle
-;; through remaining urgent views because each Monitor_activateView call
-;; clears urgency on the destination view.
-;;
-;; Promote the flashing window to the head of the destination view's
-;; aWndIds before delegating, so Monitor_activateView's final
-;; View_getActiveWindow → Manager_winActivate focuses the urgent window
-;; instead of whichever window happened to be most-recently-active there.
-Manager_activateUrgentView() {
-  Global Config_viewCount, Manager_aMonitor
+;; View is urgent iff at least one of its windows still has its urgent
+;; flag set. Walks View_#m_#i_wndIds and flips View_#m_#i_isUrgent if
+;; it diverges from that truth, refreshing the bar entry on change.
+Manager_recomputeViewUrgent(m, i) {
+  Local wndIds, stillUrgent
 
-  aMonitor    := Manager_aMonitor
-  aView       := Monitor_#%aMonitor%_aView_#1
-  urgentWndId := ""
-  Loop, % Config_viewCount {
-    v := Manager_loop(aView, A_Index, 1, Config_viewCount)
-    If View_#%aMonitor%_#%v%_isUrgent {
-      StringTrimRight, urgentWndIds, View_#%aMonitor%_#%v%_wndIds, 1
-      Loop, PARSE, urgentWndIds, `;
-      {
-        If A_LoopField And Window_#%A_LoopField%_isUrgent {
-          urgentWndId := A_LoopField
-          View_setActiveWindow(aMonitor, v, A_LoopField)
-          Break
-        }
-      }
-      Monitor_activateView(v)
-      If urgentWndId {
-        ;; Pre-show via SW_SHOWNA so WinActivate has a visible target. Skip if
-        ;; hung — ShowWindow can block, and Manager_winActivate would no-op on
-        ;; a hung target anyway (Window_activate's Window_isHung guard).
-        If Not Window_isHung(urgentWndId)
-          DllCall("ShowWindow", "Ptr", urgentWndId, "Int", 8)
-        Manager_winActivate(urgentWndId)
-      }
-      Return
+  StringTrimRight, wndIds, View_#%m%_#%i%_wndIds, 1
+  stillUrgent := False
+  Loop, PARSE, wndIds, `;
+  {
+    If A_LoopField And Window_#%A_LoopField%_isUrgent {
+      stillUrgent := True
+      Break
     }
+  }
+  If (View_#%m%_#%i%_isUrgent != stillUrgent) {
+    View_#%m%_#%i%_isUrgent := stillUrgent
+    Bar_updateView(m, i)
   }
 }
