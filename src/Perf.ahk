@@ -385,6 +385,36 @@ Perf_runBench(windowCount, iterations) {
   Perf_writeRow("window_cycle", finalCount, "View_activateWindow,Manager_winActivate,Manager_setCursor,Window_activate,Window_activate_winActivate,Window_activate_winGetA")
   Sleep, 300
 
+  ;; Scenario 3c: monocle_cycle — regression coverage for #94. In monocle
+  ;; every tiled window shares fullscreen coords, so a bare WinActivate can
+  ;; fail to repaint Z-order against a same-position peer; the fix
+  ;; (View_activateWithRaise) flips AlwaysOnTop on/off to force the raise.
+  ;; Switch to monocle, cycle, and assert the OS-active window actually
+  ;; advances. A regression → ExitApp 3 so a missing/broken flip is caught
+  ;; at bench time, not by a user pressing Win+J in monocle.
+  Perf_focusFirstSpawned(spawnedWndIds)
+  prevLayout := View_#%aMonitor%_#%benchView%_layout_#1
+  View_setLayout(2)
+  Sleep, 200
+  Perf_resetSamples()
+  monocleCycleRegressions := 0
+  Loop, % iterations {
+    WinGet, preActive, ID, A
+    View_activateWindow_now(0, +1)
+    WinGet, postActive, ID, A
+    If (preActive = postActive)
+      monocleCycleRegressions += 1
+  }
+  Perf_writeRow("monocle_cycle", finalCount, "View_activateWindow,Manager_winActivate,Window_activate,Window_activate_winActivate,Window_activate_winGetA")
+  View_setLayout(prevLayout)
+  Sleep, 200
+  If (monocleCycleRegressions > 0) {
+    Debug_logMessage("DEBUG[0] Perf_runBench: monocle_cycle REGRESSION — " . monocleCycleRegressions . " of " . iterations . " cycles failed to swap the active window (issue #94)", 0)
+    Perf_cleanup(spawnedWndIds, spawnedPids, originalView)
+    ExitApp, 3
+  }
+  Sleep, 300
+
   ;; Scenario 4: populated view_switch — spawn another batch of windows on
   ;; switchTarget so flipping between the two views exercises the real
   ;; hide/show + arrange paths with N windows on each side. The empty-views
