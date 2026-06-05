@@ -349,7 +349,7 @@ Manager_winCreateOrShowDeferred:
       View_arrange(Manager_aMonitor, Monitor_#%Manager_aMonitor%_aView_#1)
     Bar_updateView(Manager_aMonitor, Monitor_#%Manager_aMonitor%_aView_#1)
   }
-  ;; #96: symmetric restore for windows minimized via Win+Shift+N. The
+  ;; #96: symmetric restore for windows minimized via Win+N (default). The
   ;; existing Manager_onShellMessage path at ~line 1138 handles this when
   ;; HSHELL_WINDOWACTIVATED fires, but Win11 Alt+Tab restore doesn't
   ;; reliably emit that — EVENT_OBJECT_SHOW does. Walk only the cached-
@@ -363,12 +363,17 @@ Manager_winCreateOrShowDeferred:
     winRestoreHwnd := A_LoopField
     If Not winRestoreHwnd
       Continue
-    If Not Window_#%winRestoreHwnd%_isMinimized
+    winRestoreCachedMinimized := Window_#%winRestoreHwnd%_isMinimized
+    If Not winRestoreCachedMinimized
       Continue
     If Not WinExist("ahk_id " . winRestoreHwnd)
       Continue
     WinGet, winRestoreMinMax, MinMax, ahk_id %winRestoreHwnd%
-    If Not Manager_shouldReintegrateOnRestore(True, True, winRestoreMinMax = -1)
+    ;; isManaged hard-coded True: loop body only runs for HWNDs we just
+    ;; parsed out of Manager_managedWndIds. Cached flag passed live so a
+    ;; future refactor that moves the Continue guards still gets a
+    ;; correct decision from the helper.
+    If Not Manager_shouldReintegrateOnRestore(True, winRestoreCachedMinimized, winRestoreMinMax = -1)
       Continue
     winRestoreM := Window_#%winRestoreHwnd%_monitor
     winRestoreV := Monitor_#%winRestoreM%_aView_#1
@@ -414,7 +419,7 @@ Return
 ;;   isManaged       — HWND is in Manager_managedWndIds.
 ;;   isUserMinimized — cached Window_#X_isMinimized. Only set True
 ;;                     by Window_minimize, which is only called from
-;;                     Manager_minimizeWindow (Win+Shift+N). It
+;;                     Manager_minimizeWindow (Win+N default). It
 ;;                     distinguishes "we minimized this" from a
 ;;                     user-explicit float toggle, which we must NOT
 ;;                     auto-untile.

@@ -11,10 +11,11 @@
 
   Three input axes:
     isManaged        — HWND is in Manager_managedWndIds.
-    isUserMinimized  — Window_#X_isUserMinimized was set by
-                       Manager_minimizeWindow (distinguishes our
+    isUserMinimized  — cached Window_#X_isMinimized was set by
+                       Window_minimize (whose sole caller is
+                       Manager_minimizeWindow). Distinguishes our
                        float-as-minimize from a user-explicit
-                       float toggle).
+                       float toggle.
     isMinimized      — OS minimized state right now. We only want
                        to reintegrate after the OS has actually
                        restored the window (state went False).
