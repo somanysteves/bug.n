@@ -349,6 +349,35 @@ Manager_winCreateOrShowDeferred:
       View_arrange(Manager_aMonitor, Monitor_#%Manager_aMonitor%_aView_#1)
     Bar_updateView(Manager_aMonitor, Monitor_#%Manager_aMonitor%_aView_#1)
   }
+  ;; #96: symmetric restore for windows minimized via Win+Shift+N. The
+  ;; existing Manager_onShellMessage path at ~line 1138 handles this when
+  ;; HSHELL_WINDOWACTIVATED fires, but Win11 Alt+Tab restore doesn't
+  ;; reliably emit that — EVENT_OBJECT_SHOW does. Walk only the cached-
+  ;; minimized subset (Window_#X_isMinimized is set true by Window_minimize,
+  ;; whose sole caller is Manager_minimizeWindow). Cost is one property
+  ;; read per managed HWND plus a WinGet only for the typically-empty
+  ;; user-minimized set.
+  StringTrimRight, winRestoreManagedIds, Manager_managedWndIds, 1
+  Loop, PARSE, winRestoreManagedIds, `;
+  {
+    winRestoreHwnd := A_LoopField
+    If Not winRestoreHwnd
+      Continue
+    If Not Window_#%winRestoreHwnd%_isMinimized
+      Continue
+    If Not WinExist("ahk_id " . winRestoreHwnd)
+      Continue
+    WinGet, winRestoreMinMax, MinMax, ahk_id %winRestoreHwnd%
+    If Not Manager_shouldReintegrateOnRestore(True, True, winRestoreMinMax = -1)
+      Continue
+    winRestoreM := Window_#%winRestoreHwnd%_monitor
+    winRestoreV := Monitor_#%winRestoreM%_aView_#1
+    Window_#%winRestoreHwnd%_isFloating  := False
+    Window_#%winRestoreHwnd%_isMinimized := False
+    View_setActiveWindow(winRestoreM, winRestoreV, winRestoreHwnd)
+    View_arrange(winRestoreM, winRestoreV)
+    Bar_updateView(winRestoreM, winRestoreV)
+  }
   Perf_end("Manager_winCreateOrShowDeferred")
 Return
 
@@ -377,6 +406,31 @@ Return
 ;; carrying a hex string would silently miss a decimal-stored entry (or
 ;; vice-versa) and the ghost would persist. Caught by Copilot review on
 ;; PR #58 and locked in by test_Manager_classifyHideEvent.ahk.
+;; #96: pure decision for whether an EVENT_OBJECT_SHOW arrival for a
+;; previously-managed HWND should trigger the reverse-minimize
+;; reintegration sequence. Factored for direct Yunit coverage; the
+;; SHOW callback path can't be exercised without a real WinEvent hook.
+;;
+;;   isManaged       — HWND is in Manager_managedWndIds.
+;;   isUserMinimized — cached Window_#X_isMinimized. Only set True
+;;                     by Window_minimize, which is only called from
+;;                     Manager_minimizeWindow (Win+Shift+N). It
+;;                     distinguishes "we minimized this" from a
+;;                     user-explicit float toggle, which we must NOT
+;;                     auto-untile.
+;;   isMinimized     — current OS state (WinGet MinMax = -1). False
+;;                     means the OS already restored the window.
+;;
+;; Returns True iff all three identify a window we minimized that
+;; has now been restored externally. Reintegration body (clear
+;; isFloating, clear cached _isMinimized, View_arrange) mirrors
+;; Manager_onShellMessage's HSHELL_WINDOWACTIVATED branch at line
+;; ~1138 — Win11 doesn't reliably fire HSHELL_WINDOWACTIVATED for
+;; Alt+Tab restore, so the WinEvent SHOW path needs the same logic.
+Manager_shouldReintegrateOnRestore(isManaged, isUserMinimized, isMinimized) {
+  Return isManaged And isUserMinimized And Not isMinimized
+}
+
 Manager_classifyHideEvent(hwnd) {
   Global
   Local key
