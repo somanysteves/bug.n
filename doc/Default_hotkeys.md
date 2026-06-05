@@ -72,7 +72,7 @@ _Toggle_ the _floating status_ of the active window.
 regard it).
 
 -------------------------------------------------------------------------------
-`Config_hotkey=#+n::Manager_minimizeWindow()`
+`Config_hotkey=#n::Manager_minimizeWindow()`
 
 _Minimize_ the active window.
 
