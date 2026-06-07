@@ -379,8 +379,10 @@ Tiler_splitArea(axis, splitRatio, x, y, w, h, gapW, ByRef x1, ByRef y1, ByRef w1
 ;;     padding - Number of pixels to put between areas/windows.
 Tiler_stackTiles(m, v, i, len, d, axis, x, y, w, h, padding, type = "") {
   Local dx, dy, tileH, tileW, tileX, tileY
-  Local batchHwnds, batchX, batchY, batchW, batchH, batchOffsetX, batchOffsetY, batchN
+  Local batchHwnds, batchX, batchY, batchW, batchH, batchN
+  Local batchTopOff, batchRightOff, batchBottomOff, batchLeftOff
   Local wndId, wndMinMax, wndX, wndY, wndW, wndH, offsetX, offsetY
+  Local topOff, rightOff, bottomOff, leftOff
   Local sendX, sendY, sendW, sendH
   Local hdwp, batchApplied
   Local SWP_FLAGS
@@ -428,11 +430,13 @@ Tiler_stackTiles(m, v, i, len, d, axis, x, y, w, h, padding, type = "") {
   batchY := []
   batchW := []
   batchH := []
-  batchOffsetX := []
-  batchOffsetY := []
+  batchTopOff := []
+  batchRightOff := []
+  batchBottomOff := []
+  batchLeftOff := []
   Loop, % len {
     wndId := View_tiledWndId%i%
-    If wndId And Not (Window_getPosEx(wndId, wndX, wndY, wndW, wndH, offsetX, offsetY) And Abs(wndX - tileX) < 2 And Abs(wndY - tileY) < 2 And Abs(wndW - tileW) < 2 And Abs(wndH - tileH) < 2) {
+    If wndId And Not (Window_getPosEx(wndId, wndX, wndY, wndW, wndH, offsetX, offsetY, topOff, rightOff, bottomOff, leftOff) And Abs(wndX - tileX) < 2 And Abs(wndY - tileY) < 2 And Abs(wndW - tileW) < 2 And Abs(wndH - tileH) < 2) {
       If Window_isHung(wndId) {
         Debug_logMessage("DEBUG[2] Tiler_stackTiles: skipping hung window " wndId, 2)
       } Else {
@@ -444,8 +448,10 @@ Tiler_stackTiles(m, v, i, len, d, axis, x, y, w, h, padding, type = "") {
         batchY.Push(tileY)
         batchW.Push(tileW)
         batchH.Push(tileH)
-        batchOffsetX.Push(offsetX)
-        batchOffsetY.Push(offsetY)
+        batchTopOff.Push(topOff)
+        batchRightOff.Push(rightOff)
+        batchBottomOff.Push(bottomOff)
+        batchLeftOff.Push(leftOff)
       }
     }
     i += d
@@ -467,7 +473,7 @@ Tiler_stackTiles(m, v, i, len, d, axis, x, y, w, h, padding, type = "") {
     If hdwp {
       Loop, % batchN {
         Window_correctedSendCoords(batchX[A_Index], batchY[A_Index], batchW[A_Index], batchH[A_Index]
-            , batchOffsetX[A_Index], batchOffsetY[A_Index]
+            , batchTopOff[A_Index], batchRightOff[A_Index], batchBottomOff[A_Index], batchLeftOff[A_Index]
             , sendX, sendY, sendW, sendH)
         hdwp := DllCall("DeferWindowPos", "Ptr", hdwp, "Ptr", batchHwnds[A_Index], "Ptr", 0
             , "Int", sendX, "Int", sendY, "Int", sendW, "Int", sendH
