@@ -126,20 +126,42 @@ Perf_writeRow(scenario, windowCount, expectedLabels = "") {
   }
 }
 
-;; Spawn N independent windows. We use `cmd.exe /k title bug.n_bench` so
-;; each invocation creates its own window — Windows 11 Notepad is
-;; single-instance with tabs, so it fails the per-window assumption.
-;; cmd.exe doesn't hand off (unlike some Win11 launchers), so its PID is
-;; reliable; we capture it as belt-and-suspenders alongside the HWND diff
-;; in Manager_managedWndIds.
+;; Spawn N independent windows. We use mspaint.exe (Paint) — multi-instance
+;; on Win11, standard top-level window proc, no conhost quirks. Cmd was the
+;; earlier choice because it spawns reliably, but conhost clamps height to
+;; a character-cell multiple and intermittently refuses position changes,
+;; which surfaced as false-positive geometry-assertion failures in #41.
+;; Paint accepts SetWindowPos coordinates exactly, so it's an honest oracle
+;; for the assertion. Windows 11 Notepad is single-instance with tabs and
+;; was ruled out for that reason.
+;;
+;; Paint takes 1-3 s to fully initialize on cold launch. WinWait per spawn
+;; blocks until the actual MSPaintApp window exists for the spawned PID;
+;; a fixed Sleep would either be too short (race with mspaint's internal
+;; init resize, surfacing as bench-side false-positive geometry failures)
+;; or pessimistically long. Brief settle after WinWait absorbs the first
+;; internal resize before bug.n's tiler races ahead.
 Perf_spawnWindows(n, ByRef pidList) {
+  Local spawnedPid, prevDetect
   pidList := ""
+  prevDetect := A_DetectHiddenWindows
+  DetectHiddenWindows, On    ;; mspaint may still be hidden when WinWait first probes
   Loop, % n {
-    Run, %ComSpec% /k title bug.n_bench, , , spawnedPid
-    If spawnedPid
+    Run, mspaint.exe, , , spawnedPid
+    If spawnedPid {
       pidList .= spawnedPid . ";"
-    Sleep, 250    ;; let shell hook process each spawn before the next
+      ;; Block until mspaint actually creates its top-level window. 8 s
+      ;; cap matches Perf_waitForManagedDelta's per-window expectation
+      ;; (#19 baseline); cold launches under load can take several seconds.
+      WinWait, ahk_class MSPaintApp ahk_pid %spawnedPid%, , 8
+      If ErrorLevel
+        Debug_logMessage("DEBUG[0] Perf_spawnWindows: timed out waiting for mspaint PID " . spawnedPid . " window to appear", 0)
+    }
+    Sleep, 400    ;; settle: mspaint runs an internal resize shortly after
+                  ;; window creation; tile too soon and the resize overrides
+                  ;; bug.n's SetWindowPos
   }
+  DetectHiddenWindows, %prevDetect%
 }
 
 ;; Return the `;`-separated set of HWNDs in `current` that aren't in `baseline`.
@@ -252,6 +274,7 @@ Perf_runBench(windowCount, iterations) {
 
   aMonitor := Manager_aMonitor
   originalView := Monitor_#%aMonitor%_aView_#1
+  geometryFailures := 0    ;; #41: Bench_assertTiled accumulator across scenarios
 
   ;; Use the last two views as the bench playground. View_switch flips
   ;; between them, so both must be empty of user windows. Saved state can
@@ -332,6 +355,7 @@ Perf_runBench(windowCount, iterations) {
 
   Perf_writeHeader()
   Perf_writeRow("window_spawn", finalCount, "Manager_onShellMessage,Manager_sync,View_arrange")
+  geometryFailures += Bench_assertTiled(aMonitor, benchView, "window_spawn")
 
   ;; Scenario 1: view switch (benchView <-> switchTarget). Both empty of
   ;; user windows, so this exercises Monitor_activateView + View_arrange
@@ -350,6 +374,7 @@ Perf_runBench(windowCount, iterations) {
     View_arrange(aMonitor, benchView, True)
   }
   Perf_writeRow("view_arrange", finalCount, "View_arrange,Tiler_stackTiles")
+  geometryFailures += Bench_assertTiled(aMonitor, benchView, "view_arrange")
   Sleep, 300
 
   ;; Scenario 3: shuffle focused window through tile slots. View_shuffleWindow
@@ -365,6 +390,7 @@ Perf_runBench(windowCount, iterations) {
     View_shuffleWindow(0, +1)
   }
   Perf_writeRow("window_shuffle", finalCount, "View_arrange,Tiler_stackTiles")
+  geometryFailures += Bench_assertTiled(aMonitor, benchView, "window_shuffle")
   Sleep, 300
 
   ;; Scenario 3b: window_cycle — measures the per-cycle WORK cost of
@@ -406,6 +432,7 @@ Perf_runBench(windowCount, iterations) {
       monocleCycleRegressions += 1
   }
   Perf_writeRow("monocle_cycle", finalCount, "View_activateWindow,Manager_winActivate,Window_activate,Window_activate_winActivate,Window_activate_winGetA")
+  geometryFailures += Bench_assertTiled(aMonitor, benchView, "monocle_cycle")
   View_setLayout(prevLayout)
   Sleep, 200
   If (monocleCycleRegressions > 0) {
@@ -468,6 +495,7 @@ Perf_runBench(windowCount, iterations) {
     Monitor_activateView(switchTarget)
   }
   Perf_writeRow("view_switch_populated", populatedCount, "Monitor_activateView,Monitor_activateView_saveCtx,Monitor_activateView_hide,Monitor_activateView_aotOn,Monitor_activateView_aotOff,Monitor_activateView_show,Monitor_activateView_finalShow,View_arrange,Tiler_stackTiles,Bar_updateViewPair,Manager_winActivate")
+  geometryFailures += Bench_assertTiled(aMonitor, switchTarget, "view_switch_populated")
   Sleep, 300
 
   ;; Scenario 5: layout_restructure — Win+H/; (MFactor), Shift+Win+H/;
@@ -489,6 +517,7 @@ Perf_runBench(windowCount, iterations) {
     View_setLayoutProperty("StackMX", 0, -1)
   }
   Perf_writeRow("layout_restructure", populatedCount, "View_setLayoutProperty,View_arrange,Tiler_stackTiles")
+  geometryFailures += Bench_assertTiled(aMonitor, switchTarget, "layout_restructure")
   Sleep, 300
 
   ;; Scenario 5b: window_move_area — Alt+1..0 / Alt+J / Alt+K
@@ -616,6 +645,11 @@ Perf_runBench(windowCount, iterations) {
   Sleep, 300
 
   Debug_logMessage("DEBUG[0] Perf_runBench: complete, wrote " Perf_csvPath, 0)
+  If (geometryFailures > 0) {
+    Debug_logMessage("DEBUG[0] Perf_runBench: " . geometryFailures . " geometry assertion failure(s) across scenarios -- see Bench_assertTiled lines above (issue #41)", 0)
+    Perf_cleanup(spawnedWndIds . secondWndIds, spawnedPids . secondPids, originalView)
+    ExitApp, 3
+  }
   Perf_cleanup(spawnedWndIds . secondWndIds, spawnedPids . secondPids, originalView)
   ExitApp
 }
@@ -629,7 +663,10 @@ Perf_cleanup(spawnedWndIds, spawnedPids, originalView) {
   Global Manager_aMonitor
 
   Perf_closeWndIds(spawnedWndIds)
-  Perf_killByTitle("bug.n_bench")
+  ;; No title sweep -- Paint shares "Untitled - Paint" with any of the
+  ;; user's own Paint instances, so killing by title would clobber them.
+  ;; spawnedPids is authoritative; Perf_closePids handles everything we
+  ;; opened, classified or not.
   Sleep, 200
   Perf_closePids(spawnedPids)
   Sleep, 300

@@ -56,15 +56,15 @@ Bench_runUrgent() {
   Sleep, 200
 
   baselineWndIds := Manager_managedWndIds
-  Run, %ComSpec% /k title bug.n_itest, , , spawnedPid
+  Run, mspaint.exe, , , spawnedPid
   If Not Perf_waitForManagedDelta(baselineWndIds, 1, 8000) {
-    Debug_logMessage("DEBUG[0] Bench_runUrgent FAIL: cmd never registered as managed within 8s", 0)
+    Debug_logMessage("DEBUG[0] Bench_runUrgent FAIL: mspaint never registered as managed within 8s", 0)
     Bench_urgent_cleanup("", spawnedPid, originalView)
     ExitApp, 1
   }
   spawnedDiff := Perf_diffWndIds(baselineWndIds, Manager_managedWndIds)
   StringTrimRight, cmdHwnd, spawnedDiff, 1   ;; trim trailing ;
-  Debug_logMessage("DEBUG[0] Bench_runUrgent: spawned cmd HWND=" . cmdHwnd . " on view " . testView, 0)
+  Debug_logMessage("DEBUG[0] Bench_runUrgent: spawned mspaint HWND=" . cmdHwnd . " on view " . testView, 0)
   Sleep, 500   ;; let arrange settle
 
   ;; Switch to awayView so testView (and the cmd on it) is hidden. This
@@ -157,7 +157,8 @@ Bench_urgent_cleanup(cmdHwnd, spawnedPid, originalView) {
 
   If cmdHwnd
     Perf_closeWndIds(cmdHwnd)
-  Perf_killByTitle("bug.n_itest")
+  ;; No title sweep -- Paint's title "Untitled - Paint" is shared with the
+  ;; user's own Paint instances. spawnedPid is the only target.
   Sleep, 200
   If spawnedPid
     Process, Close, %spawnedPid%

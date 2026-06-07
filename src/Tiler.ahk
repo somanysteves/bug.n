@@ -180,6 +180,10 @@ Tiler_layoutTiles(m, v, x, y, w, h, type = "") {
       Return
     If (mSplit > View_tiledWndId0)
       mSplit := View_tiledWndId0
+    ;; "trace" walks the production topology but records rects instead of moving
+    ;; windows -- callers (Bench_assertTiled) get expected per-slot geometry.
+    If (type = "trace")
+      View_#%m%_#%v%_area_#0 := 0
   }
 
   ;; Areas (master and stack)
@@ -410,7 +414,7 @@ Tiler_stackTiles(m, v, i, len, d, axis, x, y, w, h, padding, type = "") {
 
   Debug_logMessage("DEBUG[2] Tiler_stackTiles: start = " i ", length = " len, 2)
 
-  If (type = "blank") {
+  If (type = "blank" Or type = "trace") {
     Loop, % len {
       Tiler_addSubArea(m, v, i, tileX, tileY, tileW, tileH)
       i += d
