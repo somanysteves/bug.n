@@ -390,6 +390,7 @@ Tiler_stackTiles(m, v, i, len, d, axis, x, y, w, h, padding, type = "") {
   Local sendX, sendY, sendW, sendH
   Local hdwp, batchApplied
   Local SWP_FLAGS
+  Local atTarget, lqtTracked, lqtMatchTarget
 
   Perf_start("Tiler_stackTiles")
   ;; d = +1: Left-to-right and top-to-bottom, depending on axis
@@ -429,6 +430,22 @@ Tiler_stackTiles(m, v, i, len, d, axis, x, y, w, h, padding, type = "") {
   ;; frame offsets from the same Window_getPosEx call that already drives
   ;; the "already-in-place" check. Restore-from-minimized must happen
   ;; here -- DeferWindowPos itself won't un-minimize.
+  ;;
+  ;; In-place skip uses BOTH the window's current position AND its last
+  ;; queued target (Window_#%wndId%_lqt*). The current-only check raced
+  ;; with in-flight async moves: an arrange queues move A targeting
+  ;; position P, then a second arrange runs before A applies. The window
+  ;; is still visually at its pre-A position, which can match the second
+  ;; arrange's target by coincidence (alternating layouts). The skip
+  ;; fires, no move queues for the second arrange. A then lands and the
+  ;; window stays at A's target -- not where the most recent arrange
+  ;; asked for. #41 caught this in layout_restructure with windows stuck
+  ;; at 2-col stack positions when the final layout was 1-col.
+  ;;
+  ;; The fix: skip only when current matches target AND last queued
+  ;; target matches target (or there is no last queued target -- first
+  ;; arrange after the window was managed). An in-flight move toward a
+  ;; different position invalidates the skip and queues a corrective move.
   batchHwnds := []
   batchX := []
   batchY := []
@@ -440,7 +457,16 @@ Tiler_stackTiles(m, v, i, len, d, axis, x, y, w, h, padding, type = "") {
   batchLeftOff := []
   Loop, % len {
     wndId := View_tiledWndId%i%
-    If wndId And Not (Window_getPosEx(wndId, wndX, wndY, wndW, wndH, offsetX, offsetY, topOff, rightOff, bottomOff, leftOff) And Abs(wndX - tileX) < 2 And Abs(wndY - tileY) < 2 And Abs(wndW - tileW) < 2 And Abs(wndH - tileH) < 2) {
+    atTarget := False
+    lqtTracked := False
+    lqtMatchTarget := False
+    If wndId {
+      atTarget := Window_getPosEx(wndId, wndX, wndY, wndW, wndH, offsetX, offsetY, topOff, rightOff, bottomOff, leftOff) And Abs(wndX - tileX) < 2 And Abs(wndY - tileY) < 2 And Abs(wndW - tileW) < 2 And Abs(wndH - tileH) < 2
+      lqtTracked := (Window_#%wndId%_lqtX != "")
+      If lqtTracked
+        lqtMatchTarget := Abs(Window_#%wndId%_lqtX - tileX) < 2 And Abs(Window_#%wndId%_lqtY - tileY) < 2 And Abs(Window_#%wndId%_lqtW - tileW) < 2 And Abs(Window_#%wndId%_lqtH - tileH) < 2
+    }
+    If wndId And Not (atTarget And (Not lqtTracked Or lqtMatchTarget)) {
       If Window_isHung(wndId) {
         Debug_logMessage("DEBUG[2] Tiler_stackTiles: skipping hung window " wndId, 2)
       } Else {
@@ -457,6 +483,18 @@ Tiler_stackTiles(m, v, i, len, d, axis, x, y, w, h, padding, type = "") {
         batchBottomOff.Push(bottomOff)
         batchLeftOff.Push(leftOff)
       }
+    }
+    ;; Record the tile-pass target as lqt regardless of whether the window
+    ;; was queued. A window already at target (skipped in Pass 1) still
+    ;; needs lqt initialized so the NEXT tile pass can detect a race --
+    ;; otherwise lqt stays "" forever for never-moved windows and the
+    ;; "Not lqtTracked" branch in the skip check above would incorrectly
+    ;; allow a future skip when current matches target by coincidence.
+    If wndId {
+      Window_#%wndId%_lqtX := tileX
+      Window_#%wndId%_lqtY := tileY
+      Window_#%wndId%_lqtW := tileW
+      Window_#%wndId%_lqtH := tileH
     }
     i += d
     tileX += dx

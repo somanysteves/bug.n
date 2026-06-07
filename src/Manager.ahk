@@ -2327,6 +2327,13 @@ Manager_unmanage(wndId) {
   Window_#%wndId%_isFloating  :=
   Window_#%wndId%_isUrgent    :=
   Window_#%wndId%_area        :=
+  ;; Last-queued-tile-target state used by Tiler_stackTiles in-place skip
+  ;; check. If the wndId is later recycled by a new top-level window,
+  ;; stale lqt would lie about that hwnd's queue history.
+  Window_#%wndId%_lqtX        :=
+  Window_#%wndId%_lqtY        :=
+  Window_#%wndId%_lqtW        :=
+  Window_#%wndId%_lqtH        :=
   StringReplace, Bar_hideTitleWndIds, Bar_hideTitleWndIds, %wndId%`;,
   StringReplace, Manager_allWndIds, Manager_allWndIds, %wndId%`;,
   StringReplace, Manager_managedWndIds, Manager_managedWndIds, %wndId%`;, , All
