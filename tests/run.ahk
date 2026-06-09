@@ -38,6 +38,8 @@ ExitApp, % TEST_FAIL_COUNT
 #Include %A_ScriptDir%\..\src\Manager.ahk
 #Include %A_ScriptDir%\..\src\Monitor.ahk
 #Include %A_ScriptDir%\..\src\Perf.ahk
+;; Resolves Bench_assertTiled referenced from Perf_runBench (see Main.ahk note).
+#Include %A_ScriptDir%\..\src\Bench_geometry.ahk
 #Include %A_ScriptDir%\..\src\MonitorManager.ahk
 #Include %A_ScriptDir%\..\src\ResourceMonitor.ahk
 #Include %A_ScriptDir%\..\src\Tiler.ahk

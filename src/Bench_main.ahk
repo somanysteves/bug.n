@@ -35,7 +35,11 @@ SetWinDelay, 10
 ;; Pseudo main function
   Main_appDir      := ""
   Bench_out        := ""
-  Bench_windows    := 8
+  ;; 5 windows so each stack tile clears mspaint's ~494 px minimum height
+  ;; on a typical 1080p+ monitor (see Perf_spawnWindows for spawn target).
+  ;; Override with --windows N to stress higher counts; geometry assertions
+  ;; in Bench_assertTiled may then flag mspaint's min-size clamp as drift.
+  Bench_windows    := 5
   Bench_iterations := 50
   Bench_commit     := ""
   Bench_scenario   := "perf"
@@ -132,6 +136,7 @@ Main_evalCommand(command) {
 #Include %A_ScriptDir%\Perf.ahk
 #Include %A_ScriptDir%\Bench_bgEventStorm.ahk
 #Include %A_ScriptDir%\Bench_dispatch.ahk
+#Include %A_ScriptDir%\Bench_geometry.ahk
 #Include %A_ScriptDir%\Bench_rename.ahk
 #Include %A_ScriptDir%\Bench_titleStorm.ahk
 #Include %A_ScriptDir%\Bench_urgent.ahk

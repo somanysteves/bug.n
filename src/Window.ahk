@@ -74,7 +74,38 @@ Window_findHung(ghostWndId) {
 ;; Window_getHidden lives in src/Window_getHidden.ahk so tests can stub it out.
 ;; See tests/README.md for the stub-swap pattern.
 
-Window_getPosEx(hWindow, ByRef X = "", ByRef Y = "", ByRef Width = "", ByRef Height = "", ByRef Offset_X = "", ByRef Offset_Y = "") {
+;; Returns the window's DWM extended frame bounds (visible rect) in
+;; X/Y/Width/Height, plus per-side invisible-border offsets.
+;;
+;; Win10/11 windows in non-maximized state have asymmetric invisible
+;; borders: top = 0 (resize handle lives inside the title bar) while
+;; left/right/bottom ≈ 8 px (drop shadow / resize handle outside the
+;; visible frame). When maximized, top also gains the ~8 px offset.
+;; A single symmetric "average" offset can't compensate for top != bottom
+;; correctly -- it lands a stack tile (top_off + bottom_off) / 2 px off
+;; in Y. See test_Window_correctedSendCoords for the math.
+;;
+;; Per-side offsets (Top_Offset, Right_Offset, Bottom_Offset, Left_Offset)
+;; are defined so that:
+;;   gwr_left   = dwm_left   - Left_Offset
+;;   gwr_top    = dwm_top    - Top_Offset
+;;   gwr_right  = dwm_right  + Right_Offset
+;;   gwr_bottom = dwm_bottom + Bottom_Offset
+;; i.e. each side's offset is the (non-negative for shadowed windows)
+;; thickness of the invisible border on that side, measured outward from
+;; the visible DWM rect.
+;;
+;; Offset_X / Offset_Y retain their original (Width - GWR_Width) // 2 /
+;; (Height - GWR_Height) // 2 definitions. They're no longer consumed
+;; inside bug.n -- the tiler's in-place skip check now compares the
+;; visible rect (X/Y/Width/Height) directly to the target, and the
+;; correction math (Window_correctedSendCoords, Window_moveAsync) uses
+;; the per-side offsets exclusively. The symmetric values stay in the
+;; signature only because Window_getPosEx is a vendored utility whose
+;; ByRef contract is exported.
+Window_getPosEx(hWindow, ByRef X = "", ByRef Y = "", ByRef Width = "", ByRef Height = ""
+    , ByRef Offset_X = "", ByRef Offset_Y = ""
+    , ByRef Top_Offset = "", ByRef Right_Offset = "", ByRef Bottom_Offset = "", ByRef Left_Offset = "") {
   Static Dummy5693, RECTPlus, S_OK := 0x0, DWMWA_EXTENDED_FRAME_BOUNDS := 9
 
   ;-- Workaround for AutoHotkey Basic
@@ -116,8 +147,12 @@ Window_getPosEx(hWindow, ByRef X = "", ByRef Y = "", ByRef Width = "", ByRef Hei
   Bottom    :=NumGet(RECTPlus, 12, "Int")
   Width     :=Right-Left
   Height    :=Bottom-Top
-  OffSet_X  := 0
-  OffSet_Y  := 0
+  Offset_X       := 0
+  Offset_Y       := 0
+  Top_Offset     := 0
+  Right_Offset   := 0
+  Bottom_Offset  := 0
+  Left_Offset    := 0
 
   ;-- If DWM is not used (older than Vista or DWM not enabled), we're done
   If (DWMRC <> S_OK)
@@ -126,10 +161,22 @@ Window_getPosEx(hWindow, ByRef X = "", ByRef Y = "", ByRef Width = "", ByRef Hei
   ;-- Collect dimensions via GetWindowRect
   VarSetCapacity(RECT, 16, 0)
   DllCall("GetWindowRect", PtrType, hWindow, PtrType, &RECT)
-  GWR_Width := NumGet(RECT, 8, "Int") - NumGet(RECT, 0, "Int")    ;-- Right minus Left
-  GWR_Height := NumGet(RECT, 12, "Int") - NumGet(RECT, 4, "Int")  ;-- Bottom minus Top
+  GWR_Left   := NumGet(RECT, 0, "Int")
+  GWR_Top    := NumGet(RECT, 4, "Int")
+  GWR_Right  := NumGet(RECT, 8, "Int")
+  GWR_Bottom := NumGet(RECT, 12, "Int")
+  GWR_Width  := GWR_Right  - GWR_Left
+  GWR_Height := GWR_Bottom - GWR_Top
 
-  ;-- Calculate offsets and update output variables
+  ;-- Per-side offsets (each is the invisible-border thickness on that
+  ;-- side, measured outward from the DWM visible rect). Non-negative for
+  ;-- typical shadowed windows.
+  Left_Offset   := Left   - GWR_Left
+  Top_Offset    := Top    - GWR_Top
+  Right_Offset  := GWR_Right  - Right
+  Bottom_Offset := GWR_Bottom - Bottom
+
+  ;-- Symmetric averages, retained for legacy callers (in-place skip check).
   NumPut(Offset_X := (Width  - GWR_Width)  // 2, RECTPlus, 16, "Int")
   NumPut(Offset_Y := (Height - GWR_Height) // 2, RECTPlus, 20, "Int")
   Return &RECTPlus
@@ -340,27 +387,36 @@ Window_move(wndId, x, y, width, height) {
   }
 }
 
-;; Feedforward DWM-frame correction. Offset_X/Y from Window_getPosEx are
-;; (visible - GWR)/2 -- negative on Win10/11 because GetWindowRect
-;; includes the invisible drop-shadow. To land the visible rect at
-;; (tileX, tileY, tileW, tileH), SetWindowPos needs the GWR shifted by
-;; the shadow and grown by 2x shadow. Pure ByRef so it's Yunit-testable.
-Window_correctedSendCoords(tileX, tileY, tileW, tileH, offsetX, offsetY
+;; Feedforward DWM-frame correction. Per-side offsets from Window_getPosEx
+;; are the invisible-border thickness on each side, measured outward from
+;; the visible DWM rect (non-negative for typical Win10/11 shadowed
+;; windows). To land the visible rect at (tileX, tileY, tileW, tileH),
+;; SetWindowPos receives a GWR shifted out by each side's offset and
+;; grown by (left + right) horizontally and (top + bottom) vertically.
+;;
+;; Per-side rather than a single symmetric offset: Win10/11 non-maximized
+;; windows have top = 0 and left/right/bottom ≈ 8 px, so a symmetric
+;; average ((0 + 8)/2 = 4) shifts every stack tile 4 px above its target.
+;; #41 caught this; see test_Window_correctedSendCoords for the math.
+Window_correctedSendCoords(tileX, tileY, tileW, tileH
+    , topOffset, rightOffset, bottomOffset, leftOffset
     , ByRef sendX, ByRef sendY, ByRef sendW, ByRef sendH) {
-  sendX := tileX + offsetX
-  sendY := tileY + offsetY
-  sendW := tileW - 2 * offsetX
-  sendH := tileH - 2 * offsetY
+  sendX := tileX - leftOffset
+  sendY := tileY - topOffset
+  sendW := tileW + leftOffset + rightOffset
+  sendH := tileH + topOffset  + bottomOffset
 }
 
 ;; Async move with feedforward DWM-frame correction. Doesn't block.
 Window_moveAsync(wndId, x, y, width, height) {
-  Local wndX, wndY, wndW, wndH, offsetX, offsetY, sendX, sendY, sendW, sendH, SWP_FLAGS, result
+  Local wndX, wndY, wndW, wndH, offsetX, offsetY
+  Local topOff, rightOff, bottomOff, leftOff
+  Local sendX, sendY, sendW, sendH, SWP_FLAGS, result
   If Not wndId
     Return 1
   Perf_start("Window_moveAsync")
-  Window_getPosEx(wndId, wndX, wndY, wndW, wndH, offsetX, offsetY)
-  Window_correctedSendCoords(x, y, width, height, offsetX, offsetY, sendX, sendY, sendW, sendH)
+  Window_getPosEx(wndId, wndX, wndY, wndW, wndH, offsetX, offsetY, topOff, rightOff, bottomOff, leftOff)
+  Window_correctedSendCoords(x, y, width, height, topOff, rightOff, bottomOff, leftOff, sendX, sendY, sendW, sendH)
   SWP_FLAGS := 0x4000 | 0x0004 | 0x0010 | 0x0200    ;; ASYNCWINDOWPOS | NOZORDER | NOACTIVATE | NOOWNERZORDER
   result := DllCall("SetWindowPos", "Ptr", wndId, "Ptr", 0
       , "Int", sendX, "Int", sendY, "Int", sendW, "Int", sendH

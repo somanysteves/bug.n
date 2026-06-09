@@ -31,7 +31,11 @@ jobs:
 
       - name: Run stress bench (perf scenario)
         shell: cmd
-        run: build\bugn-bench.exe --windows 8 --iterations 10 --commit %GITHUB_SHA% --out bench\perf-ci.csv
+        # --windows 3 fits Bench_assertTiled (#41) on the runner's 1024x768
+        # desktop: stack tiles must clear mspaint's ~378 px minimum height,
+        # so (work_h - bar) / (N-1) >= 378 caps N at 3. Higher counts run
+        # locally where the operator's display is taller.
+        run: build\bugn-bench.exe --windows 3 --iterations 10 --commit %GITHUB_SHA% --out bench\perf-ci.csv
 
       - name: Run stress bench (urgent scenario)
         shell: cmd

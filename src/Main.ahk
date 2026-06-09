@@ -76,6 +76,11 @@ Return
 #Include %A_ScriptDir%\Help.ahk
 #Include %A_ScriptDir%\Manager.ahk
 #Include %A_ScriptDir%\Perf.ahk
+;; Bench_geometry.ahk defines Bench_assertTiled, which Perf.ahk references
+;; from inside Perf_runBench. Perf_runBench is bench-only (never invoked by
+;; bugn.exe), but the symbol must still resolve at compile time -- same
+;; situation as Perf_spawnWindows et al. living in Perf.ahk.
+#Include %A_ScriptDir%\Bench_geometry.ahk
 #Include %A_ScriptDir%\Manager_setCursor.ahk
 #Include %A_ScriptDir%\Monitor.ahk
 #Include %A_ScriptDir%\ResourceMonitor.ahk
