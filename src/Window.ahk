@@ -96,10 +96,13 @@ Window_findHung(ghostWndId) {
 ;; the visible DWM rect.
 ;;
 ;; Offset_X / Offset_Y retain their original (Width - GWR_Width) // 2 /
-;; (Height - GWR_Height) // 2 definitions so the tiler's in-place skip
-;; check (Tiler_stackTiles) still has a single symmetric estimate to
-;; compare against -- it only needs "is this window roughly here", not
-;; exact positioning.
+;; (Height - GWR_Height) // 2 definitions. They're no longer consumed
+;; inside bug.n -- the tiler's in-place skip check now compares the
+;; visible rect (X/Y/Width/Height) directly to the target, and the
+;; correction math (Window_correctedSendCoords, Window_moveAsync) uses
+;; the per-side offsets exclusively. The symmetric values stay in the
+;; signature only because Window_getPosEx is a vendored utility whose
+;; ByRef contract is exported.
 Window_getPosEx(hWindow, ByRef X = "", ByRef Y = "", ByRef Width = "", ByRef Height = ""
     , ByRef Offset_X = "", ByRef Offset_Y = ""
     , ByRef Top_Offset = "", ByRef Right_Offset = "", ByRef Bottom_Offset = "", ByRef Left_Offset = "") {

@@ -507,14 +507,28 @@ Perf_runBench(windowCount, iterations) {
   ;; six labels blend into a single View_setLayoutProperty row; the
   ;; three Tiler_set* helpers are sub-ms so the cost is dominated by
   ;; the shared View_arrange + Tiler_stackTiles path.
+  ;; Bench_waitForArrangeSettle between each property change lets the
+  ;; previous arrange's async window moves fully drain before the next
+  ;; op queues more. The per-call timing samples (View_setLayoutProperty,
+  ;; View_arrange, Tiler_stackTiles) are captured inside the call via
+  ;; Perf_start/Perf_end, so the settle wait happens after timing closes
+  ;; and doesn't pollute the perf row. The wait does extend wall-clock
+  ;; bench duration but keeps each op measuring against a known-settled
+  ;; baseline rather than racing the OS message queue (#41).
   Perf_resetSamples()
   Loop, % iterations {
     View_setLayoutProperty("MFactor", 0, +0.05)
+    Bench_waitForArrangeSettle(aMonitor, switchTarget)
     View_setLayoutProperty("MFactor", 0, -0.05)
+    Bench_waitForArrangeSettle(aMonitor, switchTarget)
     View_setLayoutProperty("MY", 0, +1)
+    Bench_waitForArrangeSettle(aMonitor, switchTarget)
     View_setLayoutProperty("MY", 0, -1)
+    Bench_waitForArrangeSettle(aMonitor, switchTarget)
     View_setLayoutProperty("StackMX", 0, +1)
+    Bench_waitForArrangeSettle(aMonitor, switchTarget)
     View_setLayoutProperty("StackMX", 0, -1)
+    Bench_waitForArrangeSettle(aMonitor, switchTarget)
   }
   Perf_writeRow("layout_restructure", populatedCount, "View_setLayoutProperty,View_arrange,Tiler_stackTiles")
   geometryFailures += Bench_assertTiled(aMonitor, switchTarget, "layout_restructure")

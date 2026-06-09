@@ -22,12 +22,82 @@
     - tiling onto the wrong monitor when (m, v) routing breaks,
     - future refactors that regress in-place geometry.
 
-  The 2 px tolerance matches Tiler_stackTiles's own in-place check
-  (Tiler.ahk:435) and absorbs DWM sub-pixel rounding.
+  Per-axis tolerance is 1 px (the assertion fails when any axis differs
+  by > 1). Tighter than Tiler_stackTiles's own in-place check
+  (Tiler.ahk:435, 2 px) because that check just decides "is the window
+  in place" and a 2 px tolerance is fine for skip-optimization, while
+  the assertion's job is to surface every drift in the correction math.
+  A clean correction lands the window with at most ~1 px integer-rounding
+  noise from float-to-int truncation in SetWindowPos.
 
   Called only by the bench (Perf_runBench / Bench_run*). Production
   arrange paths are untouched.
 */
+
+;; Wait for the most recent arrange's async window moves to drain. Same
+;; poll-positions-until-stable mechanism Bench_assertTiled uses but
+;; standalone, so a scenario can settle between successive arranges
+;; (e.g. layout_restructure's rapid property toggles) before queueing
+;; the next op. Without it, on a fast machine the next View_arrange
+;; fires before the prior one's SetWindowPos messages drain, the window
+;; proc can coalesce the in-flight queue, and the assertion fails on a
+;; window-proc artifact rather than a real bug.n drift.
+;;
+;; Per-call timing samples (View_setLayoutProperty / View_arrange /
+;; Tiler_stackTiles) are captured via Perf_start/Perf_end inside the
+;; arrange call, so the settle wait happens after timing closes and
+;; doesn't pollute the perf row. Wall-clock bench duration grows, but
+;; each op gets measured against a known-settled baseline.
+;;
+;; 50 ms × 10 cap = 500 ms upper bound per call -- generous since most
+;; settles are 1 iter (50 ms). Returns the iteration count it settled
+;; at, or 0 if it ran out of iterations. Caller can log the 0 case for
+;; diagnosis.
+Bench_waitForArrangeSettle(m, v) {
+  Local tiledCount, slotHwnds, prevX, prevY, prevW, prevH
+  Local px, py, pw, ph, curX, curY, curW, curH, stable, stableIters
+
+  View_getTiledWndIds(m, v)
+  tiledCount := View_tiledWndId0
+  If (tiledCount = 0)
+    Return 0
+
+  slotHwnds := []
+  Loop, % tiledCount
+    slotHwnds.Push(View_tiledWndId%A_Index%)
+
+  prevX := []
+  prevY := []
+  prevW := []
+  prevH := []
+  Loop, % tiledCount {
+    If Window_getPosEx(slotHwnds[A_Index], px, py, pw, ph) {
+      prevX.Push(px), prevY.Push(py), prevW.Push(pw), prevH.Push(ph)
+    } Else {
+      prevX.Push(0),  prevY.Push(0),  prevW.Push(0),  prevH.Push(0)
+    }
+  }
+  stableIters := 0
+  Loop, 10 {
+    Sleep, 50
+    stable := True
+    Loop, % tiledCount {
+      If Window_getPosEx(slotHwnds[A_Index], curX, curY, curW, curH) {
+        If (Abs(curX - prevX[A_Index]) > 2 Or Abs(curY - prevY[A_Index]) > 2
+            Or Abs(curW - prevW[A_Index]) > 2 Or Abs(curH - prevH[A_Index]) > 2) {
+          stable := False
+        }
+        prevX[A_Index] := curX, prevY[A_Index] := curY
+        prevW[A_Index] := curW, prevH[A_Index] := curH
+      }
+    }
+    If stable {
+      stableIters := A_Index
+      Break
+    }
+  }
+  Return stableIters
+}
 
 ;; Returns the number of assertion failures (0 = pass). Logs per-window
 ;; diffs at level 0 so a CI run surfaces them without --debug.
@@ -105,7 +175,11 @@ Bench_assertTiled(m, v, scenario) {
   }
   ;; Single-iteration settle is the normal case; only log when something
   ;; took longer (queue was unusually backed up or a window was slow).
-  If (stableIters != 1)
+  ;; stableIters = 0 means the loop never broke out -- queue never settled
+  ;; in ~2 s; we assert whatever's there and let the diff speak for itself.
+  If (stableIters = 0)
+    Debug_logMessage("DEBUG[0] Bench_assertTiled [" . scenario . "]: positions did NOT stabilize within 20 poll iterations (~2 s) -- asserting current state", 0)
+  Else If (stableIters != 1)
     Debug_logMessage("DEBUG[0] Bench_assertTiled [" . scenario . "]: positions stabilized after " . stableIters . " poll iteration(s)", 0)
 
   ;; Same margin-adjusted area View_arrange feeds the tiler (View_arrange.ahk:27-30).
