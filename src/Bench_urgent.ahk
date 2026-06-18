@@ -110,6 +110,25 @@ Bench_runUrgent() {
     failures += 1
   }
 
+  ;; Regression guard: a bar rebuild must NOT orphan the shell-hook
+  ;; registration. Bar_init (triggered in production by Win+/ view rename and
+  ;; monitor reconfig) does Gui,Destroy + recreate; a hook registered on the
+  ;; bar window is orphaned by that, silently killing HSHELL_FLASH urgency
+  ;; until restart. Registering on A_ScriptHwnd survives it. Reset, rebuild the
+  ;; bar, flash again, and assert urgency still lands.
+  View_#%aMonitor%_#%testView%_isUrgent := False
+  Window_#%cmdHwnd%_isUrgent            := False
+  Bar_init(aMonitor)
+  Sleep, 300
+  Bench_flashWindow(cmdHwnd, 5, 200)
+  Sleep, 800
+  If Not View_#%aMonitor%_#%testView%_isUrgent {
+    Debug_logMessage("DEBUG[0] Bench_runUrgent FAIL: flash after Bar_init did not mark urgent — shell hook orphaned by bar rebuild", 0)
+    failures += 1
+  } Else {
+    Debug_logMessage("DEBUG[0] Bench_runUrgent: ✓ urgency survives bar rebuild (shell hook not orphaned)", 0)
+  }
+
   ;; Now exercise Win+U.
   Manager_activateUrgentView()
   Sleep, 300

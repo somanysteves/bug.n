@@ -1301,6 +1301,11 @@ Manager_registerTaskBarHook() {
 Manager_onTaskbarCreated(wParam, lParam, msg, hwnd) {
   Global Manager_taskBarHook
 
+  ;; Explorer (re)started => the OS dropped every RegisterShellHookWindow
+  ;; registration. Re-register the shell hook AND rebuild the taskbar
+  ;; WinEvent hook, else HSHELL_FLASH urgency stays dead until a restart.
+  Debug_logMessage("DEBUG[0] Manager_onTaskbarCreated: explorer (re)started; re-registering shell hook + taskbar hook", 0)
+  Manager_registerShellHook()
   If Manager_taskBarHook {
     DllCall("UnhookWinEvent", "Ptr", Manager_taskBarHook)
     Manager_taskBarHook := 0
@@ -1346,17 +1351,22 @@ Manager_onObjectShowOrHide(hWinEventHook, event, hwnd, idObject, idChild, idEven
 }
 
 Manager_registerShellHook() {
-  Global Config_monitorDisplayChangeMessages
+  Global Config_monitorDisplayChangeMessages, Manager_shellHookHwnd, Manager_shellHookMsgNum
 
   WM_DISPLAYCHANGE := 126   ;; This message is sent when the display resolution has changed.
-  Gui, +LastFound
-  hWnd := WinExist()
-  WinGetClass, wndClass, ahk_id %hWnd%
-  WinGetTitle, wndTitle, ahk_id %hWnd%
-  DllCall("RegisterShellHookWindow", "UInt", hWnd)    ;; Minimum operating systems: Windows 2000 (http://msdn.microsoft.com/en-us/library/ms644989(VS.85).aspx)
-  Debug_logMessage("DEBUG[1] Manager_registerShellHook; hWnd: " . hWnd . ", wndClass: " . wndClass . ", wndTitle: " . wndTitle, 1)
+  ;; FIX: register on the script's permanent main window, not a bar GUI.
+  ;; Bar_init does Gui,Destroy + recreate, which orphans a bar-window
+  ;; registration (RegisterShellHookWindow is per-window) and silently kills
+  ;; HSHELL_FLASH urgency. A_ScriptHwnd survives every Gui rebuild.
+  hWnd := A_ScriptHwnd
+  shellHookRet := DllCall("RegisterShellHookWindow", "UInt", hWnd)    ;; Min OS: Windows 2000
   msgNum := DllCall("RegisterWindowMessage", "Str", "SHELLHOOK")
   OnMessage(msgNum, "Manager_onShellMessage")
+  Manager_shellHookHwnd := hWnd
+  Manager_shellHookMsgNum := msgNum
+  ;; Log at level 0 (survives default boot level) the BOOL return of
+  ;; RegisterShellHookWindow (0 = OS refused) + the SHELLHOOK msg id.
+  Debug_logMessage("DEBUG[0] Manager_registerShellHook; hWnd: " . hWnd . ", RegisterShellHookWindow=" . shellHookRet . ", SHELLHOOK msgNum=" . msgNum, 0)
   If !(Config_monitorDisplayChangeMessages = "off" || Config_monitorDisplayChangeMessages = 0)
     OnMessage(WM_DISPLAYCHANGE, "Manager_onDisplayChange")
 }
@@ -1636,12 +1646,9 @@ Manager_resetMonitorConfiguration() {
   Bar_updateStatus()
   Bar_updateTitle()
 
-  Gui, +LastFound
-  hWnd := WinExist()
-  WinGetClass, wndClass, ahk_id %hWnd%
-  WinGetTitle, wndTitle, ahk_id %hWnd%
-  DllCall("RegisterShellHookWindow", "UInt", hWnd)    ;; Minimum operating systems: Windows 2000 (http://msdn.microsoft.com/en-us/library/ms644989(VS.85).aspx)
-  Debug_logMessage("DEBUG[1] Manager_registerShellHook; hWnd: " . hWnd . ", wndClass: " . wndClass . ", wndTitle: " . wndTitle, 1)
+  ;; Bars were rebuilt above; re-assert the shell-hook registration via the
+  ;; single canonical path (idempotent now that it targets A_ScriptHwnd).
+  Manager_registerShellHook()
 }
 
 Manager_restoreWindowBorders()
