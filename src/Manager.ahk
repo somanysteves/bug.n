@@ -1669,7 +1669,10 @@ Manager_resetMonitorConfiguration() {
     Debug_logMessage("DEBUG[6] resetMonitorConfig: Bar_updateView(" . A_Index . ") done", 6)
   }
   Debug_logMessage("DEBUG[6] resetMonitorConfig: restoreWindowState start", 6)
-  Manager__restoreWindowState(Main_autoWindowState)
+  ;; reapplyRules := False — the state was just saved above by this same process with
+  ;; these same rules; re-validating against transiently-blank post-reconnect titles is
+  ;; the cause of the display-change window-drop bug. Trust the saved isManaged here.
+  Manager__restoreWindowState(Main_autoWindowState, False)
   Debug_logMessage("DEBUG[6] resetMonitorConfig: restoreWindowState done", 6)
   Bar_updateStatus()
   Bar_updateTitle()
@@ -1718,10 +1721,18 @@ Manager__parseSavedWindowLine(line, ByRef wndId, ByRef processName, ByRef monito
   Return True
 }
 
+;; During restore, decide if a parsed-as-managed window should be dropped because
+;; current rules now exclude it. Only cold startup (reapplyRules) re-checks rules;
+;; a live display-change restore trusts the saved isManaged so a transiently-blank
+;; post-reconnect title can't drop a still-managed window from every view.
+Manager__restoreExcludedByRules(reapplyRules, ruleIsManaged) {
+  Return reapplyRules And Not ruleIsManaged
+}
+
 ;; Restore previously saved window state.
 ;; If the state is completely different, this function won't do much. However, if restoring from a crash
 ;; or simply restarting bug.n, it should completely recover the window state.
-Manager__restoreWindowState(filename) {
+Manager__restoreWindowState(filename, reapplyRules := True) {
   Local vidx, widx, i, j, m, v, candidate_set, detectHidden, view_set, excluded_view_set, view_m0, view_v0, view_list0, wnds0, items0, wndId, expectedPName, wndPName, view_var, isManaged, isFloating, isDecorated, hideTitle, ruleIsManaged, ruleM, ruleTags, ruleIsFloating, ruleIsDecorated, ruleHideTitle, ruleAction
 
   If Not FileExist(filename)
@@ -1784,14 +1795,22 @@ Manager__restoreWindowState(filename) {
       Continue
     }
 
-    ;; Re-apply current rules — a rule added since this state was saved may now exclude this window.
+    ;; Re-apply current rules only on cold startup (reapplyRules): there the on-disk state may
+    ;; predate a config/rule edit. On a live display-change restore the state was written
+    ;; milliseconds ago by this same process, and a just-reconnected window's title is often
+    ;; transiently blank — re-checking a title-keyed rule would spuriously drop a still-managed
+    ;; window from every view. So skip the re-check and trust the saved isManaged.
     ;; DetectHiddenWindows must be On so WinGetClass/WinGetTitle inside Manager_applyRules
     ;; can read the class and title of windows that bug.n has hidden on inactive views.
-    DetectHiddenWindows, On
-    Manager_applyRules(wndId, ruleIsManaged, ruleM, ruleTags, ruleIsFloating, ruleIsDecorated, ruleHideTitle, ruleAction)
-    DetectHiddenWindows, %detectHidden%
-    If Not ruleIsManaged {
+    ruleIsManaged := isManaged
+    If reapplyRules {
+      DetectHiddenWindows, On
+      Manager_applyRules(wndId, ruleIsManaged, ruleM, ruleTags, ruleIsFloating, ruleIsDecorated, ruleHideTitle, ruleAction)
+      DetectHiddenWindows, %detectHidden%
+    }
+    If Manager__restoreExcludedByRules(reapplyRules, ruleIsManaged) {
       Debug_logMessage("Window ahk_id " . wndId . " excluded by current rules during state restore, skipping.", 0)
+      Window_show(wndId)   ;; safety net: a dropped-but-live window must stay visible, never orphaned-and-hidden
       Continue
     }
 
@@ -1802,6 +1821,7 @@ Manager__restoreWindowState(filename) {
           Debug_logMessage("Window ahk_id " . wndId . " is being ignored because it no longer belongs to an active view", 0)
         Else
           Debug_logMessage("Window ahk_id " . wndId . " is being ignored because it doesn't exist in any views", 0)
+        Window_show(wndId)   ;; same safety net: keep a dropped-but-live window reachable
         Continue
       }
     }

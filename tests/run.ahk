@@ -9,7 +9,7 @@ SetBatchLines, -1
 TEST_PASS_COUNT := 0
 TEST_FAIL_COUNT := 0
 
-Yunit.Use(CIReporter).Test(TestTiler, TestManagerLoop, TestViewShuffleWindow, TestManagerDisplayChange, TestManagerUrgentView, TestConfigUrgentPalette, TestManagerSync, TestHelp, TestBarSetViewHighlight, TestManagerBarTitleAction, TestManagerBarTitleDispatch, TestWindowCorrectedSendCoords, TestWindowGetTitleNonBlocking, TestManagerModifiersFromHotkey, TestViewCycleDrain, TestManagerStaleBounce, TestManagerClassifyHideEvent, TestManagerIsManagedDestroy, TestManagerShouldResetDebouncedTimer, TestManagerParseSavedWindowLine, TestManagerUnmanage, TestManagerProcessHideQueue, TestManagerValidateAlive, TestManagerApplyViewRename, TestConfigViewNamesPersistence, TestManagerShouldReintegrateOnRestore)
+Yunit.Use(CIReporter).Test(TestTiler, TestManagerLoop, TestViewShuffleWindow, TestManagerDisplayChange, TestManagerUrgentView, TestConfigUrgentPalette, TestManagerSync, TestHelp, TestBarSetViewHighlight, TestManagerBarTitleAction, TestManagerBarTitleDispatch, TestWindowCorrectedSendCoords, TestWindowGetTitleNonBlocking, TestManagerModifiersFromHotkey, TestViewCycleDrain, TestManagerStaleBounce, TestManagerClassifyHideEvent, TestManagerIsManagedDestroy, TestManagerShouldResetDebouncedTimer, TestManagerParseSavedWindowLine, TestManagerUnmanage, TestManagerProcessHideQueue, TestManagerValidateAlive, TestManagerApplyViewRename, TestConfigViewNamesPersistence, TestManagerShouldReintegrateOnRestore, TestManagerRestoreExcludedByRules)
 
 total := TEST_PASS_COUNT + TEST_FAIL_COUNT
 FileAppend, % "`n--- " . TEST_PASS_COUNT . " passed, " . TEST_FAIL_COUNT . " failed (" . total . " total) ---`n", *
@@ -76,3 +76,4 @@ ExitApp, % TEST_FAIL_COUNT
 #Include %A_ScriptDir%\test_Manager_applyViewRename.ahk
 #Include %A_ScriptDir%\test_Config_viewNamesPersistence.ahk
 #Include %A_ScriptDir%\test_Manager_shouldReintegrateOnRestore.ahk
+#Include %A_ScriptDir%\test_Manager_restoreExcludedByRules.ahk
