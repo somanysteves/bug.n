@@ -1952,7 +1952,7 @@ Manager_saveWindowState(filename, nm, nv) {
 ;; Manager_renameViewSubmit label when the user hits Enter / clicks OK.
 Manager_renameView() {
   Global
-  Local m, mX, mY, mW, mH, popupH, popupW, x, y, current
+  Local m, mX, mY, mW, mH, popupH, popupW, x, y, current, mods
 
   Manager_renameView_aView := Monitor_#%Manager_aMonitor%_aView_#1
   current := Config_viewNames_#%Manager_renameView_aView%
@@ -1981,6 +1981,13 @@ Manager_renameView() {
 
   Gui, Show, x%x% y%y% w%popupW% h%popupH%, bug.n_RENAME
   GuiControl, Focus, Manager_renameView_input
+
+  ;; The dialog stole focus, so the #/ Win key-up is swallowed by the Edit
+  ;; control and the OS treats Win as still held -- the first typed char would
+  ;; fire Win+<char> (e.g. Win+E -> Explorer). Drain it, as Manager_closeWindow.
+  mods := Manager_modifiersFromHotkey(A_ThisHotkey)
+  If mods
+    SendInput %mods%
 
   ;; GuiEscape doesn't fire reliably on Win11 for a -Caption +ToolWindow
   ;; Gui hosting an editable Edit (the Edit captures Esc before it
