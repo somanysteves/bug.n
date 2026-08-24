@@ -31,6 +31,9 @@ SetWinDelay, 10
 #NoEnv
 #SingleInstance off
 #WinActivateForce
+;; Shared with Main.ahk so this build exercises the same #MaxThreadsBuffer
+;; setting production ships -- the hotkeyDrop bench depends on it.
+#Include %A_ScriptDir%\Directives.ahk
 
 ;; Pseudo main function
   Main_appDir      := ""
@@ -101,6 +104,8 @@ Bench_kick:
     Bench_runBgEventStorm()
   Else If (Bench_scenario = "bgEventStormHelper")
     Bench_runBgEventStormHelper(Bench_iterations)
+  Else If (Bench_scenario = "hotkeyDrop")
+    Bench_runHotkeyDrop()
   Else
     Perf_runBench(Bench_windows, Bench_iterations)
 Return
@@ -137,6 +142,7 @@ Main_evalCommand(command) {
 #Include %A_ScriptDir%\Bench_bgEventStorm.ahk
 #Include %A_ScriptDir%\Bench_dispatch.ahk
 #Include %A_ScriptDir%\Bench_geometry.ahk
+#Include %A_ScriptDir%\Bench_hotkeyDrop.ahk
 #Include %A_ScriptDir%\Bench_rename.ahk
 #Include %A_ScriptDir%\Bench_titleStorm.ahk
 #Include %A_ScriptDir%\Bench_urgent.ahk

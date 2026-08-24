@@ -24,6 +24,9 @@ SetWinDelay, 10
 #SingleInstance force
 ;#Warn                         ; Enable warnings to assist with detecting common errors.
 #WinActivateForce
+;; Script-wide directives shared with bugn-bench.exe so the hotkeyDrop
+;; bench guards the real setting. See Directives.ahk for the rationale.
+#Include %A_ScriptDir%\Directives.ahk
 
 ;; Pseudo main function
   Main_appDir := ""
