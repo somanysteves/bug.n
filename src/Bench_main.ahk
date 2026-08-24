@@ -106,6 +106,8 @@ Bench_kick:
     Bench_runBgEventStormHelper(Bench_iterations)
   Else If (Bench_scenario = "hotkeyDrop")
     Bench_runHotkeyDrop()
+  Else If (Bench_scenario = "spawnpin")
+    Bench_runSpawnPin()
   Else
     Perf_runBench(Bench_windows, Bench_iterations)
 Return
@@ -144,6 +146,7 @@ Main_evalCommand(command) {
 #Include %A_ScriptDir%\Bench_geometry.ahk
 #Include %A_ScriptDir%\Bench_hotkeyDrop.ahk
 #Include %A_ScriptDir%\Bench_rename.ahk
+#Include %A_ScriptDir%\Bench_spawnPin.ahk
 #Include %A_ScriptDir%\Bench_titleStorm.ahk
 #Include %A_ScriptDir%\Bench_urgent.ahk
 #Include %A_ScriptDir%\Manager_setCursor.ahk
