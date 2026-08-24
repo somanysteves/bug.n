@@ -676,7 +676,7 @@ Manager__setWinProperties(wndId, isManaged, m, tags, isDecorated, isFloating, hi
 ;; Accept a window to be added to the system for management.
 ;; Provide a monitor and view preference, but don't override the config.
 Manager_manage(preferredMonitor, preferredView, wndId, rule = "") {
-  Local a, action, c0, hideTitle, i, isDecorated, isFloating, isManaged, l, m, n, replace, search, tags, body
+  Local a, action, c0, hideTitle, i, isDecorated, isFloating, isManaged, l, m, n, replace, search, tags, body, wndProcess
   Local rule0, rule1, rule2, rule3, rule4, rule5, rule6, rule7
   Local wndControlList0, wndId0, wndIds, wndX, wndY, wndWidth, wndHeight
 
@@ -719,8 +719,16 @@ Manager_manage(preferredMonitor, preferredView, wndId, rule = "") {
       m := 1
     If (m > Manager_monitorCount)    ;; If the specified monitor is out of scope, set it to the max. monitor.
       m := Manager_monitorCount
+    If (tags = 0) {
+      ;; Alacritty runs on winit, whose window class is the generic "Window Class";
+      ;; match the exe instead so an unrelated window opening during the spawn lag
+      ;; can't steal a pin.
+      WinGet, wndProcess, ProcessName, ahk_id %wndId%
+      If (wndProcess = "alacritty.exe")
+        Manager_consumeSpawnPin(m, tags)   ;; sets m + tags on success; no-op otherwise
+    }
     If (tags = 0)
-      tags := 1 << (preferredView - 1)
+      tags := 1 << (preferredView - 1)     ;; unchanged fallback when no pin applied
   }
 
   a := Manager__setWinProperties(wndId, isManaged, m, tags, isDecorated, isFloating, hideTitle, action)
@@ -739,6 +747,50 @@ Manager_manage(preferredMonitor, preferredView, wndId, rule = "") {
   }
 
   Return, a
+}
+
+;; Consume the oldest fresh spawn-pin, if any. On success sets m/tags from the
+;; reference window and returns True; otherwise leaves them untouched, returns
+;; False. Pin file: one "<refHwnd> <unixEpochSecondsUTC>" per line, FIFO, lines
+;; older than 15s are stale. We own consumption: the used line and any stale
+;; lines are removed by rewriting the file.
+Manager_consumeSpawnPin(ByRef m, ByRef tags) {
+  Global Main_dataDir
+
+  pinFile := Main_dataDir . "\spawn-pins.txt"
+  If Not FileExist(pinFile)
+    Return False
+
+  now := A_NowUTC
+  now -= 19700101000000, Seconds         ;; A_NowUTC (YYYYMMDDHH24MISS) -> unix epoch
+
+  applied := False
+  kept := ""
+  FileRead, content, %pinFile%             ;; FileRead+Loop,Parse per house style; Loop,Read misreads here
+  Loop, Parse, content, `n, `r
+  {
+    If (A_LoopField = "")                ;; blank/trailing line -> skip (StringSplit leaves parts stale)
+      Continue
+    If (applied) {                       ;; already took one -> preserve the remainder
+      kept .= A_LoopField "`n"
+      Continue
+    }
+    StringSplit, parts, A_LoopField, %A_Space%
+    refHwnd := parts1, ts := parts2
+    If (ts = "" Or (now - ts) > 15)      ;; stale -> drop
+      Continue
+    refKey := Manager_isManaged(refHwnd) ;; "" if the reference isn't a managed window
+    If (refKey = "")
+      Continue                           ;; drop: nothing to copy from
+    m    := Window_#%refKey%_monitor     ;; copy BOTH monitor ...
+    tags := Window_#%refKey%_tags        ;; ... and the tag bitmask
+    applied := True
+  }
+
+  FileDelete, %pinFile%
+  If (kept != "")
+    FileAppend, %kept%, %pinFile%
+  Return applied
 }
 
 Manager_maximizeWindow() {
