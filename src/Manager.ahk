@@ -62,6 +62,11 @@ Manager_init()
   Manager_managedWndIds    := ""
   Manager_pendingHideWndIds := ""
   Manager_urgentWndIds     := ""
+  ;; Session-teardown gate (see Manager_shouldSuppressHideUnmanage). Start
+  ;; active; lastReconnectTick 0 means "never reconnected" -> no grace.
+  Manager_sessionActive    := True
+  Manager_lastReconnectTick := 0
+  Manager_sessionHookHwnd  := 0
   Manager_initial_sync(doRestore)
 
   Bar_updateStatus()
@@ -73,6 +78,7 @@ Manager_init()
   }
 
   Manager_registerShellHook()
+  Manager_registerSessionHook()
   Manager_registerWindowCreateOrShowHook()
   Manager_registerTaskBarHook()
   ;; INSTRUMENTATION: seed hook-health counters + 5-min heartbeat.
@@ -160,6 +166,13 @@ Manager_cleanup()
   If Manager_winCreateOrShowHook {
     DllCall("UnhookWinEvent", "Ptr", Manager_winCreateOrShowHook)
     Manager_winCreateOrShowHook := 0
+  }
+  ;; Drop the WTS session-change subscription taken in
+  ;; Manager_registerSessionHook. Balanced Register/UnRegister on the same
+  ;; A_ScriptHwnd; skip if registration never ran (e.g. bench).
+  If Manager_sessionHookHwnd {
+    DllCall("Wtsapi32.dll\WTSUnRegisterSessionNotification", "Ptr", Manager_sessionHookHwnd)
+    Manager_sessionHookHwnd := 0
   }
   SetTimer, Manager_winCreateOrShowDeferred, Off
   SetTimer, Manager_winHideDeferred, Off
@@ -440,6 +453,53 @@ Manager_shouldReintegrateOnRestore(isManaged, isUserMinimized, isMinimized) {
   Return isManaged And isUserMinimized And Not isMinimized
 }
 
+;; Map a WM_WTSSESSION_CHANGE status code to whether the session just
+;; became *active* (True), *inactive* (False), or neither (""). During a
+;; disconnect/lock the OS fires EVENT_OBJECT_HIDE for managed top-level
+;; windows as it tears the session desktop down; bug.n misreads those as
+;; deliberate app-dismissals and unmanages the windows (orphaning them
+;; hidden-and-untracked on reconnect). This mapping drives the gate that
+;; suppresses that unmanage. Factored pure for Yunit coverage -- the
+;; WM_WTSSESSION_CHANGE handler can't be exercised without a live session.
+;;   WTS_CONSOLE_CONNECT      0x1  active
+;;   WTS_CONSOLE_DISCONNECT   0x2  inactive
+;;   WTS_REMOTE_CONNECT       0x3  active
+;;   WTS_REMOTE_DISCONNECT    0x4  inactive
+;;   WTS_SESSION_LOGON        0x5  (no change)
+;;   WTS_SESSION_LOGOFF       0x6  (no change)
+;;   WTS_SESSION_LOCK         0x7  inactive
+;;   WTS_SESSION_UNLOCK       0x8  active
+Manager_sessionStatusIsActive(status) {
+  If (status = 0x8 Or status = 0x3 Or status = 0x1)
+    Return True
+  If (status = 0x7 Or status = 0x4 Or status = 0x2)
+    Return False
+  Return ""
+}
+
+;; Pure decision for whether a queued app-side HIDE (see
+;; Manager__processHideQueue) should be *suppressed* -- left managed rather
+;; than unmanaged -- because it is session-teardown churn, not a genuine
+;; app-dismissal. True when the session is currently inactive
+;; (locked/disconnected), OR within graceMs of the last reconnect: the OS
+;; keeps firing HIDE for several seconds past the reconnect (the 2026-09-03
+;; capture showed the unmanage burst trailing the reconnect by ~7s), so the
+;; flag alone isn't enough -- a short grace after re-activation is required.
+;;   sessionActive    -- Manager_sessionActive (False while locked/disconnected)
+;;   msSinceReconnect -- A_TickCount - Manager_lastReconnectTick
+;;   graceMs          -- Config_sessionReconnectGraceMs
+;; Boundary is exclusive (msSinceReconnect = graceMs -> grace over). A
+;; negative delta (32-bit A_TickCount wraparound inside the grace window)
+;; reads as "don't suppress", the safe default -- mirrors the wraparound
+;; handling in Manager_shouldResetDebouncedTimer.
+Manager_shouldSuppressHideUnmanage(sessionActive, msSinceReconnect, graceMs) {
+  If Not sessionActive
+    Return True
+  If (msSinceReconnect >= 0 And msSinceReconnect < graceMs)
+    Return True
+  Return False
+}
+
 Manager_classifyHideEvent(hwnd) {
   Global
   Local key
@@ -499,7 +559,17 @@ Manager__processHideQueue(queue) {
       Continue
     If Window_isHung(A_LoopField)
       Continue
-    Debug_logMessage("DEBUG[1] Manager__processHideQueue: unmanage " A_LoopField " (app-side hide)", 1)
+    ;; Session gate: during an RDP/Citrix disconnect (or lock) and for a
+    ;; short grace after reconnect, the OS fires EVENT_OBJECT_HIDE for
+    ;; managed windows as it tears down / rebuilds the desktop. Those are
+    ;; teardown churn, not app-dismissals -- unmanaging them orphans the
+    ;; windows hidden-and-untracked on reconnect. Leave them managed; the
+    ;; display-change debounce re-arranges the affected monitors.
+    If Manager_shouldSuppressHideUnmanage(Manager_sessionActive, A_TickCount - Manager_lastReconnectTick, Config_sessionReconnectGraceMs) {
+      Debug_logMessage("DEBUG[0] Manager__processHideQueue: suppressed unmanage " A_LoopField " (session teardown/reconnect)", 0)
+      Continue
+    }
+    Debug_logMessage("DEBUG[0] Manager__processHideQueue: unmanage " A_LoopField " (app-side hide)", 0)
     m := Manager_unmanage(A_LoopField)
     If m And Not InStr(affected, ";" m ";")
       affected .= ";" m ";"
@@ -1381,6 +1451,60 @@ Manager_registerShellHook() {
   Debug_logMessage("DEBUG[0] Manager_registerShellHook; hWnd: " . hWnd . ", RegisterShellHookWindow=" . shellHookRet . ", SHELLHOOK msgNum=" . msgNum, 0)
   If !(Config_monitorDisplayChangeMessages = "off" || Config_monitorDisplayChangeMessages = 0)
     OnMessage(WM_DISPLAYCHANGE, "Manager_onDisplayChange")
+}
+
+;; Register for WM_WTSSESSION_CHANGE so bug.n can tell an RDP/Citrix
+;; disconnect/reconnect (or lock/unlock) apart from a genuine app-side
+;; window dismissal. Without this, the EVENT_OBJECT_HIDE burst the OS
+;; fires while tearing down the session desktop is misread as
+;; app-dismissals and the windows are unmanaged -- orphaned hidden and
+;; untracked on reconnect. Registered on A_ScriptHwnd (the permanent main
+;; window that survives every Bar Gui rebuild -- same rationale as the
+;; shell hook above). NOTIFY_FOR_THIS_SESSION == 0.
+Manager_registerSessionHook() {
+  Global Manager_sessionHookHwnd
+  WM_WTSSESSION_CHANGE := 0x02B1
+  hWnd := A_ScriptHwnd
+  ret := DllCall("Wtsapi32.dll\WTSRegisterSessionNotification", "Ptr", hWnd, "UInt", 0)
+  OnMessage(WM_WTSSESSION_CHANGE, "Manager_onSessionChange")
+  Manager_sessionHookHwnd := hWnd
+  Debug_logMessage("DEBUG[0] Manager_registerSessionHook; hWnd: " . hWnd . ", WTSRegisterSessionNotification=" . ret, 0)
+}
+
+;; WM_WTSSESSION_CHANGE handler. wParam is the WTS_* status code; the
+;; body lives in Manager_applySessionChange so the pure classification is
+;; Yunit-covered (this callback can't be exercised without a live session).
+Manager_onSessionChange(wParam, lParam, msg, hwnd) {
+  Manager_applySessionChange(wParam)
+}
+
+;; Apply a WTS_* status code to the session gate: flip Manager_sessionActive,
+;; and on the transition back to active (reconnect/unlock) stamp
+;; Manager_lastReconnectTick so the trailing HIDE burst stays suppressed for
+;; the grace window, then re-arrange every monitor (the OS may have reshuffled
+;; windows during teardown). Codes that aren't a connect/lock transition
+;; (logon/logoff/unknown) leave the state untouched.
+Manager_applySessionChange(status) {
+  ;; Bare `Global` (assume-global) mode -- matches Manager__processHideQueue:
+  ;; the reconnect re-arrange dynamically derefs Monitor_#%A_Index%_aView_#1,
+  ;; and this is the file's proven idiom for dynamic-global-deref into
+  ;; View_arrange. isActive becomes a global temp (harmless).
+  Global
+  isActive := Manager_sessionStatusIsActive(status)
+  If (isActive = "")
+    Return
+  If isActive {
+    Manager_lastReconnectTick := A_TickCount
+    Manager_sessionActive := True
+    Debug_logMessage("DEBUG[0] Manager_applySessionChange: session ACTIVE (status=" . status . "), " . Config_sessionReconnectGraceMs . "ms grace", 0)
+    If Config_dynamicTiling {
+      Loop, % Manager_monitorCount
+        View_arrange(A_Index, Monitor_#%A_Index%_aView_#1)
+    }
+  } Else {
+    Manager_sessionActive := False
+    Debug_logMessage("DEBUG[0] Manager_applySessionChange: session INACTIVE (status=" . status . "), suppressing hide-unmanage", 0)
+  }
 }
 
 ;; Hook-health heartbeat. Fired by a 5-min timer started in Manager_init.
