@@ -632,7 +632,7 @@ Manager_loop(index, increment, lowerBound, upperBound) {
 }
 
 Manager__setWinProperties(wndId, isManaged, m, tags, isDecorated, isFloating, hideTitle, action = "") {
-  Local a := False
+  Local a := False, aWndId, stealFocus
 
   If Not InStr(Manager_allWndIds, wndId ";")
     Manager_allWndIds .= wndId ";"
@@ -663,7 +663,19 @@ Manager__setWinProperties(wndId, isManaged, m, tags, isDecorated, isFloating, hi
       Manager_winActivate(wndId)
     } Else {
       Manager_hideShow := True
+      ;; If this background-view window grabbed the foreground the OS handed it at
+      ;; creation, return focus to the active view so it can't steal keystrokes
+      ;; (e.g. an ant-pinned terminal spawned onto another tag -- alacritty has no
+      ;; way to start unfocused on Windows). Gated on it actually being foreground,
+      ;; captured before the hide (which clears the foreground), so bulk restore/sync
+      ;; -- which hide windows that never took focus -- are untouched.
+      stealFocus := (DllCall("GetForegroundWindow", "Ptr") = wndId)
       Window_hide(wndId)
+      If stealFocus {
+        aWndId := View_getActiveWindow(Manager_aMonitor, Monitor_#%Manager_aMonitor%_aView_#1)
+        If aWndId
+          Manager_winActivate(aWndId)
+      }
       Manager_hideShow := False
     }
   }
@@ -676,7 +688,7 @@ Manager__setWinProperties(wndId, isManaged, m, tags, isDecorated, isFloating, hi
 ;; Accept a window to be added to the system for management.
 ;; Provide a monitor and view preference, but don't override the config.
 Manager_manage(preferredMonitor, preferredView, wndId, rule = "") {
-  Local a, action, c0, hideTitle, i, isDecorated, isFloating, isManaged, l, m, n, replace, search, tags, body
+  Local a, action, c0, hideTitle, i, isDecorated, isFloating, isManaged, l, m, n, replace, search, tags, body, wndProcess, wndClass
   Local rule0, rule1, rule2, rule3, rule4, rule5, rule6, rule7
   Local wndControlList0, wndId0, wndIds, wndX, wndY, wndWidth, wndHeight
 
@@ -719,8 +731,23 @@ Manager_manage(preferredMonitor, preferredView, wndId, rule = "") {
       m := 1
     If (m > Manager_monitorCount)    ;; If the specified monitor is out of scope, set it to the max. monitor.
       m := Manager_monitorCount
+    If (tags = 0) {
+      ;; Consume a spawn-pin only for Alacritty's REAL terminal window: process
+      ;; alacritty.exe AND class "Window Class". Alacritty (winit) creates sibling
+      ;; windows on the same process -- "Winit Thread Event Target" and the IME
+      ;; windows -- that bug.n may manage *before* the terminal; matching on the exe
+      ;; alone lets one of those consume the pin first, leaving the real terminal to
+      ;; fall back to the active view (confirmed via spawnPin trace). The class check
+      ;; excludes them; pairing it with the exe keeps the generic winit class precise.
+      WinGet, wndProcess, ProcessName, ahk_id %wndId%
+      WinGetClass, wndClass, ahk_id %wndId%
+      If (wndProcess = "alacritty.exe" And wndClass = "Window Class") {
+        Debug_logMessage("DEBUG[2] spawnPin: alacritty wndId=" wndId " -> check pin", 2)
+        Manager_consumeSpawnPin(m, tags)   ;; sets m + tags on success; no-op otherwise
+      }
+    }
     If (tags = 0)
-      tags := 1 << (preferredView - 1)
+      tags := 1 << (preferredView - 1)     ;; unchanged fallback when no pin applied
   }
 
   a := Manager__setWinProperties(wndId, isManaged, m, tags, isDecorated, isFloating, hideTitle, action)
@@ -739,6 +766,55 @@ Manager_manage(preferredMonitor, preferredView, wndId, rule = "") {
   }
 
   Return, a
+}
+
+;; Consume the oldest fresh spawn-pin, if any. On success sets m/tags from the
+;; reference window and returns True; otherwise leaves them untouched, returns
+;; False. Pin file: one "<refHwnd> <unixEpochSecondsUTC>" per line, FIFO, lines
+;; older than 15s are stale. We own consumption: the used line and any stale
+;; lines are removed by rewriting the file.
+Manager_consumeSpawnPin(ByRef m, ByRef tags) {
+  Global Main_dataDir
+
+  pinFile := Main_dataDir . "\spawn-pins.txt"
+  If Not FileExist(pinFile)              ;; common no-spawn case -> stay silent
+    Return False
+
+  now := A_NowUTC
+  now -= 19700101000000, Seconds         ;; A_NowUTC (YYYYMMDDHH24MISS) -> unix epoch
+
+  applied := False
+  kept := ""
+  FileRead, content, %pinFile%             ;; FileRead+Loop,Parse per house style; Loop,Read misreads here
+  Loop, Parse, content, `n, `r
+  {
+    If (A_LoopField = "")                ;; blank/trailing line -> skip (StringSplit leaves parts stale)
+      Continue
+    If (applied) {                       ;; already took one -> preserve the remainder
+      kept .= A_LoopField "`n"
+      Continue
+    }
+    StringSplit, parts, A_LoopField, %A_Space%
+    refHwnd := parts1, ts := parts2
+    If (ts = "" Or (now - ts) > 15) {    ;; stale -> drop
+      Debug_logMessage("DEBUG[0] spawnPin: drop stale ref=" refHwnd " age=" (now - ts) "s", 0)
+      Continue
+    }
+    refKey := Manager_isManaged(refHwnd) ;; "" if the reference isn't a managed window
+    If (refKey = "") {
+      Debug_logMessage("DEBUG[0] spawnPin: ref " refHwnd " not managed -> drop", 0)
+      Continue                           ;; drop: nothing to copy from
+    }
+    m    := Window_#%refKey%_monitor     ;; copy BOTH monitor ...
+    tags := Window_#%refKey%_tags        ;; ... and the tag bitmask
+    applied := True
+    Debug_logMessage("DEBUG[0] spawnPin: applied ref=" refHwnd " (key " refKey ") -> monitor=" m " tags=" tags, 0)
+  }
+
+  FileDelete, %pinFile%
+  If (kept != "")
+    FileAppend, %kept%, %pinFile%
+  Return applied
 }
 
 Manager_maximizeWindow() {
