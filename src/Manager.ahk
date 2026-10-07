@@ -67,6 +67,10 @@ Manager_init()
   Manager_sessionActive    := True
   Manager_lastReconnectTick := 0
   Manager_sessionHookHwnd  := 0
+  ;; Two-pass debounce for Manager_validateAlive: hwnds that failed WinExist
+  ;; on the previous pass. A managed window must miss twice in a row before
+  ;; it is pruned, so a transient teardown blip can't drop a live window.
+  Manager_validateAliveMissed := ""
   Manager_initial_sync(doRestore)
 
   Bar_updateStatus()
@@ -317,6 +321,15 @@ Manager_validateAliveTimer:
       View_arrange(A_LoopField, Monitor_#%A_LoopField%_aView_#1)
   }
   Manager_validateInProgress := False
+  ;; Two-pass debounce: Manager_validateAlive deferred at least one HWND that
+  ;; failed WinExist once (Manager_validateAliveMissed non-empty). Re-arm a
+  ;; confirming pass so a genuinely dead window is still pruned promptly even
+  ;; with no further shell churn to arm the timer; a window that reappears
+  ;; clears its mark on that pass, one that stays gone is pruned. Converges:
+  ;; a pruned/reappeared hwnd leaves the set, so the re-arm stops once state
+  ;; is stable. The InProgress guard above prevents overlap with this pass.
+  If Manager_validateAliveMissed
+    Manager_armDebouncedTimer("Manager_validateAliveTimer", 200)
 Return
 
 ;; Debounce target for Bar_updateTitle. See Manager_barTitleAction.
@@ -498,6 +511,32 @@ Manager_shouldSuppressHideUnmanage(sessionActive, msSinceReconnect, graceMs) {
   If (msSinceReconnect >= 0 And msSinceReconnect < graceMs)
     Return True
   Return False
+}
+
+;; Pure two-pass-debounce decision for Manager_validateAlive, factored out
+;; for Yunit coverage (the timer-driven walk can't be exercised directly).
+;; A managed HWND must fail WinExist on two *consecutive* validateAlive
+;; passes before it is pruned: on an RDP/Citrix disconnect/reconnect the OS
+;; tears the session desktop down and rebuilds it, and managed top-level
+;; windows transiently fail WinExist even though their HWNDs survive --
+;; pruning on that single blip silently orphans a live window
+;; (HANDOFF 2026-09-29, the primary previously-unlogged reconnect path).
+;;   existsNow    -- WinExist succeeded this pass.
+;;   missedBefore -- the hwnd failed WinExist on the previous pass (it is in
+;;                   Manager_validateAliveMissed).
+;; Returns:
+;;   "alive" -- window exists; clear any miss mark (covers the blip that
+;;              resolves on the next pass).
+;;   "defer" -- first miss; mark it and wait one more pass.
+;;   "prune" -- second consecutive miss; the window is really gone. A
+;;              genuinely dead / force-killed window fails both passes and is
+;;              still pruned, preserving validateAlive's self-healing job.
+Manager_classifyAliveCheck(existsNow, missedBefore) {
+  If existsNow
+    Return "alive"
+  If missedBefore
+    Return "prune"
+  Return "defer"
 }
 
 Manager_classifyHideEvent(hwnd) {
@@ -2520,29 +2559,60 @@ Manager_sync(ByRef wndIds = "")
 ;; re-arranged Manager_aMonitor, missing sibling monitors that owned
 ;; the dead windows.
 Manager_validateAlive() {
-  Local affected, deadWndIds, m, mgrTrimmed, prevDetect
+  ;; Assume-global (bare Global) so the session-gate state
+  ;; (Manager_sessionActive / Manager_lastReconnectTick /
+  ;; Config_sessionReconnectGraceMs) and the cross-pass miss tracker
+  ;; (Manager_validateAliveMissed) resolve to the same globals Manager_init
+  ;; seeds and Manager_applySessionChange updates -- the same idiom
+  ;; Manager__processHideQueue uses for the hide-path gate. Temporaries are
+  ;; declared Local so the walk doesn't leak into the global namespace.
+  Global
+  Local affected, m, mgrTrimmed, prevDetect, existsNow, disposition, newMissed
 
   Perf_start("Manager_validateAlive")
   affected := ""
+
+  ;; Session gate (same decision as the hide path): during an RDP/Citrix
+  ;; disconnect or lock, and for a short grace after reconnect, managed
+  ;; top-level windows transiently fail WinExist as the OS tears the session
+  ;; desktop down and rebuilds it -- the HWNDs survive but are momentarily
+  ;; unfindable. Pruning on that blip silently orphans a live window
+  ;; hidden-and-untracked (HANDOFF 2026-09-29: the primary, previously
+  ;; unlogged reconnect-orphan path -- this prune loop had no log line and no
+  ;; gate). Skip the prune while suppressing, and clear the miss tracker so
+  ;; the two-pass debounce starts fresh once the session is back.
+  If Manager_shouldSuppressHideUnmanage(Manager_sessionActive, A_TickCount - Manager_lastReconnectTick, Config_sessionReconnectGraceMs) {
+    Manager_validateAliveMissed := ""
+    Perf_end("Manager_validateAlive")
+    Return ""
+  }
+
   prevDetect := A_DetectHiddenWindows
   DetectHiddenWindows, On
-  deadWndIds := ""
+  newMissed := ""
   StringTrimRight, mgrTrimmed, Manager_managedWndIds, 1
   Loop, PARSE, mgrTrimmed, `;
   {
-    If A_LoopField And Not WinExist("ahk_id " . A_LoopField)
-      deadWndIds .= A_LoopField . ";"
-  }
-  DetectHiddenWindows, %prevDetect%
-  StringTrimRight, deadWndIds, deadWndIds, 1
-  Loop, PARSE, deadWndIds, `;
-  {
     If Not A_LoopField
       Continue
-    m := Manager_unmanage(A_LoopField)
-    If m And Not InStr(affected, ";" m ";")
-      affected .= ";" m ";"
+    existsNow := WinExist("ahk_id " . A_LoopField) ? True : False
+    ;; Two-pass debounce (Manager_classifyAliveCheck): a single teardown
+    ;; blip must not prune a live window. The miss set is bracketed with a
+    ;; leading ";" for membership so a short hwnd can't prefix-match a longer
+    ;; one (same guard pattern as the "affected" set below).
+    disposition := Manager_classifyAliveCheck(existsNow, InStr(";" . Manager_validateAliveMissed, ";" . A_LoopField . ";") ? True : False)
+    If (disposition = "defer")
+      newMissed .= A_LoopField . ";"
+    Else If (disposition = "prune") {
+      Debug_logMessage("DEBUG[0] Manager_validateAlive: unmanage " . A_LoopField . " (WinExist=0, 2 consecutive passes)", 0)
+      m := Manager_unmanage(A_LoopField)
+      If (m And Not InStr(affected, ";" . m . ";"))
+        affected .= ";" . m . ";"
+    }
   }
+  DetectHiddenWindows, %prevDetect%
+  Manager_validateAliveMissed := newMissed
+
   Perf_end("Manager_validateAlive")
   Return affected
 }
