@@ -9,7 +9,7 @@ SetBatchLines, -1
 TEST_PASS_COUNT := 0
 TEST_FAIL_COUNT := 0
 
-Yunit.Use(CIReporter).Test(TestTiler, TestManagerLoop, TestViewShuffleWindow, TestManagerDisplayChange, TestManagerUrgentView, TestConfigUrgentPalette, TestManagerSync, TestHelp, TestBarSetViewHighlight, TestManagerBarTitleAction, TestManagerBarTitleDispatch, TestWindowCorrectedSendCoords, TestWindowGetTitleNonBlocking, TestManagerModifiersFromHotkey, TestViewCycleDrain, TestManagerStaleBounce, TestManagerClassifyHideEvent, TestManagerIsManagedDestroy, TestManagerShouldResetDebouncedTimer, TestManagerParseSavedWindowLine, TestManagerUnmanage, TestManagerProcessHideQueue, TestManagerValidateAlive, TestManagerApplyViewRename, TestConfigViewNamesPersistence, TestManagerShouldReintegrateOnRestore, TestManagerRestoreExcludedByRules, TestManagerConsumeSpawnPin)
+Yunit.Use(CIReporter).Test(TestTiler, TestManagerLoop, TestViewShuffleWindow, TestManagerDisplayChange, TestManagerUrgentView, TestConfigUrgentPalette, TestManagerSync, TestHelp, TestBarSetViewHighlight, TestManagerBarTitleAction, TestManagerBarTitleDispatch, TestWindowCorrectedSendCoords, TestWindowGetTitleNonBlocking, TestManagerModifiersFromHotkey, TestViewCycleDrain, TestManagerStaleBounce, TestManagerClassifyHideEvent, TestManagerIsManagedDestroy, TestManagerShouldResetDebouncedTimer, TestManagerParseSavedWindowLine, TestManagerUnmanage, TestManagerProcessHideQueue, TestManagerValidateAlive, TestManagerApplyViewRename, TestConfigViewNamesPersistence, TestManagerShouldReintegrateOnRestore, TestManagerRestoreExcludedByRules, TestManagerConsumeSpawnPin, TestManagerSessionGate, TestManagerValidateAliveDebounce)
 
 total := TEST_PASS_COUNT + TEST_FAIL_COUNT
 FileAppend, % "`n--- " . TEST_PASS_COUNT . " passed, " . TEST_FAIL_COUNT . " failed (" . total . " total) ---`n", *
@@ -78,3 +78,5 @@ ExitApp, % TEST_FAIL_COUNT
 #Include %A_ScriptDir%\test_Manager_shouldReintegrateOnRestore.ahk
 #Include %A_ScriptDir%\test_Manager_restoreExcludedByRules.ahk
 #Include %A_ScriptDir%\test_Manager_consumeSpawnPin.ahk
+#Include %A_ScriptDir%\test_Manager_sessionGate.ahk
+#Include %A_ScriptDir%\test_Manager_validateAliveDebounce.ahk

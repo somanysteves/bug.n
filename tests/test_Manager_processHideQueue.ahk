@@ -26,11 +26,19 @@ class TestManagerProcessHideQueue
     Global Window_#1002_monitor, Window_#1002_tags
     Global Window_#1002_isDecorated, Window_#1002_isFloating, Window_#1002_isUrgent, Window_#1002_area
     Global Test_viewArrangeCallCount, Test_viewArrangeHistory
+    Global Manager_sessionActive, Manager_lastReconnectTick, Config_sessionReconnectGraceMs
 
     Bar_initialized      := False
     Config_viewCount     := 9
     Config_dynamicTiling := True
     Manager_aMonitor     := 1
+
+    ;; Session gate defaults: active, never reconnected (grace long over) so
+    ;; the unmanage path runs normally. The SessionInactive_* cases below flip
+    ;; Manager_sessionActive to assert suppression.
+    Manager_sessionActive         := True
+    Manager_lastReconnectTick     := 0
+    Config_sessionReconnectGraceMs := 2000
     Monitor_#1_aView_#1  := 3
     Monitor_#2_aView_#1  := 1
 
@@ -130,5 +138,32 @@ class TestManagerProcessHideQueue
     result := Manager__processHideQueue("1002")
     Yunit.Assert(result = ";2;", "affected set still tracked, got '" . result . "'")
     Yunit.Assert(Test_viewArrangeCallCount = 0, "no View_arrange when dynamicTiling off, got " . Test_viewArrangeCallCount)
+  }
+
+  SessionInactive_SuppressesUnmanage_WindowStaysManaged()
+  {
+    ;; The fix: during a disconnect/lock (session inactive) the app-side
+    ;; HIDE burst must NOT unmanage. The window stays in Manager_managedWndIds
+    ;; and on its view; no monitor is arranged (nothing was dropped).
+    Global Manager_sessionActive, Manager_managedWndIds, View_#2_#1_wndIds, Test_viewArrangeCallCount
+    Manager_sessionActive := False
+    result := Manager__processHideQueue("1002")
+    Yunit.Assert(result = "", "no monitor affected when suppressed, got '" . result . "'")
+    Yunit.Assert(Test_viewArrangeCallCount = 0, "no View_arrange when suppressed, got " . Test_viewArrangeCallCount)
+    Yunit.Assert(InStr(Manager_managedWndIds, "1002;"), "1002 must stay managed, got '" . Manager_managedWndIds . "'")
+    Yunit.Assert(View_#2_#1_wndIds = "1002;", "1002 must stay on its view, got '" . View_#2_#1_wndIds . "'")
+  }
+
+  SessionActiveWithinReconnectGrace_SuppressesUnmanage()
+  {
+    ;; Reconnect just happened (lastReconnectTick = now): the trailing HIDE
+    ;; burst is still teardown churn and must be suppressed even though the
+    ;; session flag already flipped back to active.
+    Global Manager_sessionActive, Manager_lastReconnectTick, Manager_managedWndIds
+    Manager_sessionActive     := True
+    Manager_lastReconnectTick := A_TickCount   ;; 0ms elapsed, well within 2000 grace
+    result := Manager__processHideQueue("1002")
+    Yunit.Assert(result = "", "within grace: no monitor affected, got '" . result . "'")
+    Yunit.Assert(InStr(Manager_managedWndIds, "1002;"), "1002 must stay managed within grace, got '" . Manager_managedWndIds . "'")
   }
 }
