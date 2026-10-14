@@ -9,11 +9,12 @@
   bugn-bench.exe process to exercise what Yunit can't:
 
     - the real Manager_manage path taking a *real* new window through the
-      tags = 0 default, WinGet ProcessName filter, and consumeSpawnPin,
+      tags = 0 default and consumeSpawnPin's declared exe+class match,
     - the real OS HWND format flowing through Manager_isManaged (the same
       hex/decimal mismatch class of bug the urgent bench guards against),
-    - a genuine Alacritty (alacritty.exe) window, so the process-name
-      filter is validated against the actual shipped terminal.
+    - a genuine Alacritty (alacritty.exe) window, so the pin's declared
+      "alacritty.exe Window Class" match is validated against the actual
+      shipped terminal and its winit sibling windows.
 
   Shape: land a reference window (mspaint) on the reference view, drop a
   fresh pin for its HWND (the producer's job in production), drift the
@@ -68,7 +69,7 @@ Bench_runSpawnPin() {
   now -= 19700101000000, Seconds
   If FileExist(pinFile)
     FileDelete, %pinFile%
-  FileAppend, % refDec . " " . now . "`n", %pinFile%
+  FileAppend, % refDec . " " . now . " alacritty.exe Window Class`n", %pinFile%
 
   ;; 3. Drift the active view away -- without the pin the spawn would land
   ;;    here (activeView), not on refView.

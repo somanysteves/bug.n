@@ -732,19 +732,11 @@ Manager_manage(preferredMonitor, preferredView, wndId, rule = "") {
     If (m > Manager_monitorCount)    ;; If the specified monitor is out of scope, set it to the max. monitor.
       m := Manager_monitorCount
     If (tags = 0) {
-      ;; Consume a spawn-pin only for Alacritty's REAL terminal window: process
-      ;; alacritty.exe AND class "Window Class". Alacritty (winit) creates sibling
-      ;; windows on the same process -- "Winit Thread Event Target" and the IME
-      ;; windows -- that bug.n may manage *before* the terminal; matching on the exe
-      ;; alone lets one of those consume the pin first, leaving the real terminal to
-      ;; fall back to the active view (confirmed via spawnPin trace). The class check
-      ;; excludes them; pairing it with the exe keeps the generic winit class precise.
+      ;; Every new window asks for a pin; each pin declares the exe+class it is for,
+      ;; so which windows may consume one is the producer's call, not bug.n's.
       WinGet, wndProcess, ProcessName, ahk_id %wndId%
       WinGetClass, wndClass, ahk_id %wndId%
-      If (wndProcess = "alacritty.exe" And wndClass = "Window Class") {
-        Debug_logMessage("DEBUG[2] spawnPin: alacritty wndId=" wndId " -> check pin", 2)
-        Manager_consumeSpawnPin(m, tags)   ;; sets m + tags on success; no-op otherwise
-      }
+      Manager_consumeSpawnPin(m, tags, wndProcess, wndClass)   ;; sets m + tags on success; no-op otherwise
     }
     If (tags = 0)
       tags := 1 << (preferredView - 1)     ;; unchanged fallback when no pin applied
@@ -768,12 +760,20 @@ Manager_manage(preferredMonitor, preferredView, wndId, rule = "") {
   Return, a
 }
 
-;; Consume the oldest fresh spawn-pin, if any. On success sets m/tags from the
-;; reference window and returns True; otherwise leaves them untouched, returns
-;; False. Pin file: one "<refHwnd> <unixEpochSecondsUTC>" per line, FIFO, lines
-;; older than 15s are stale. We own consumption: the used line and any stale
-;; lines are removed by rewriting the file.
-Manager_consumeSpawnPin(ByRef m, ByRef tags) {
+;; Consume the oldest fresh spawn-pin declared for a window like this one. On
+;; success sets m/tags from the reference window and returns True; otherwise
+;; leaves them untouched, returns False.
+;;
+;; Pin file: one "<refHwnd> <unixEpochSecondsUTC> <matchExe> <matchClass>" per
+;; line, FIFO, lines older than 15s are stale. matchClass is the rest of the line
+;; (Alacritty's is "Window Class"). "*" or an absent field matches anything, except
+;; that a legacy 2-field line means "alacritty.exe Window Class": producers that
+;; predate the match fields only ever spawned Alacritty, and a wildcard would let
+;; its winit sibling windows consume the pin ahead of the real terminal.
+;;
+;; We own consumption: the used line and stale/unmanaged-ref matching lines are
+;; removed; fresh lines for other windows stay for their own window.
+Manager_consumeSpawnPin(ByRef m, ByRef tags, wndProcess, wndClass) {
   Global Main_dataDir
 
   pinFile := Main_dataDir . "\spawn-pins.txt"
@@ -784,36 +784,49 @@ Manager_consumeSpawnPin(ByRef m, ByRef tags) {
   now -= 19700101000000, Seconds         ;; A_NowUTC (YYYYMMDDHH24MISS) -> unix epoch
 
   applied := False
+  changed := False
   kept := ""
   FileRead, content, %pinFile%             ;; FileRead+Loop,Parse per house style; Loop,Read misreads here
   Loop, Parse, content, `n, `r
   {
-    If (A_LoopField = "")                ;; blank/trailing line -> skip (StringSplit leaves parts stale)
+    If (A_LoopField = "")                ;; blank/trailing line -> skip
       Continue
     If (applied) {                       ;; already took one -> preserve the remainder
       kept .= A_LoopField "`n"
       Continue
     }
-    StringSplit, parts, A_LoopField, %A_Space%
-    refHwnd := parts1, ts := parts2
+    f1 := A_LoopField, f2 := f3 := f4 := ""   ;; a malformed line keeps these -> no timestamp -> stale
+    RegExMatch(A_LoopField, "^\s*(\S+)\s+(\S+)(?:\s+(\S+)(?:\s+(.*\S))?)?\s*$", f)
+    refHwnd := f1, ts := f2, matchExe := f3, matchClass := f4
     If (ts = "" Or (now - ts) > 15) {    ;; stale -> drop
       Debug_logMessage("DEBUG[0] spawnPin: drop stale ref=" refHwnd " age=" (now - ts) "s", 0)
+      changed := True
+      Continue
+    }
+    If (matchExe = "")                   ;; legacy 2-field line
+      matchExe := "alacritty.exe", matchClass := "Window Class"
+    If Not ((matchExe = "*" Or matchExe = wndProcess) And (matchClass = "" Or matchClass = "*" Or matchClass == wndClass)) {
+      kept .= A_LoopField "`n"           ;; fresh pin for some other window -> leave it
       Continue
     }
     refKey := Manager_isManaged(refHwnd) ;; "" if the reference isn't a managed window
     If (refKey = "") {
       Debug_logMessage("DEBUG[0] spawnPin: ref " refHwnd " not managed -> drop", 0)
+      changed := True
       Continue                           ;; drop: nothing to copy from
     }
     m    := Window_#%refKey%_monitor     ;; copy BOTH monitor ...
     tags := Window_#%refKey%_tags        ;; ... and the tag bitmask
     applied := True
-    Debug_logMessage("DEBUG[0] spawnPin: applied ref=" refHwnd " (key " refKey ") -> monitor=" m " tags=" tags, 0)
+    changed := True
+    Debug_logMessage("DEBUG[0] spawnPin: applied ref=" refHwnd " (key " refKey ") to " wndProcess " / " wndClass " -> monitor=" m " tags=" tags, 0)
   }
 
-  FileDelete, %pinFile%
-  If (kept != "")
-    FileAppend, %kept%, %pinFile%
+  If (changed) {                         ;; every new window lands here now; don't churn the file for no-op passes
+    FileDelete, %pinFile%
+    If (kept != "")
+      FileAppend, %kept%, %pinFile%
+  }
   Return applied
 }
 
