@@ -731,9 +731,10 @@ Manager_manage(preferredMonitor, preferredView, wndId, rule = "") {
       m := 1
     If (m > Manager_monitorCount)    ;; If the specified monitor is out of scope, set it to the max. monitor.
       m := Manager_monitorCount
-    If (tags = 0) {
-      ;; Every new window asks for a pin; each pin declares the exe+class it is for,
-      ;; so which windows may consume one is the producer's call, not bug.n's.
+    If (tags = 0 And isManaged) {
+      ;; Every new managed window asks for a pin; each pin declares the exe+class it
+      ;; is for, so which windows may consume one is the producer's call, not bug.n's.
+      ;; Unmanaged ones (e.g. the Chrome popup rule) would discard the placement.
       WinGet, wndProcess, ProcessName, ahk_id %wndId%
       WinGetClass, wndClass, ahk_id %wndId%
       Manager_consumeSpawnPin(m, tags, wndProcess, wndClass)   ;; sets m + tags on success; no-op otherwise
