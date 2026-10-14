@@ -766,10 +766,8 @@ Manager_manage(preferredMonitor, preferredView, wndId, rule = "") {
 ;;
 ;; Pin file: one "<refHwnd> <unixEpochSecondsUTC> <matchExe> <matchClass>" per
 ;; line, FIFO, lines older than 15s are stale. matchClass is the rest of the line
-;; (Alacritty's is "Window Class"). "*" or an absent field matches anything, except
-;; that a legacy 2-field line means "alacritty.exe Window Class": producers that
-;; predate the match fields only ever spawned Alacritty, and a wildcard would let
-;; its winit sibling windows consume the pin ahead of the real terminal.
+;; (Alacritty's is "Window Class"). "*" or an absent field matches anything, so a
+;; legacy 2-field line is consumed by whichever window is managed first.
 ;;
 ;; We own consumption: the used line and stale/unmanaged-ref matching lines are
 ;; removed; fresh lines for other windows stay for their own window.
@@ -803,9 +801,7 @@ Manager_consumeSpawnPin(ByRef m, ByRef tags, wndProcess, wndClass) {
       changed := True
       Continue
     }
-    If (matchExe = "")                   ;; legacy 2-field line
-      matchExe := "alacritty.exe", matchClass := "Window Class"
-    If Not ((matchExe = "*" Or matchExe = wndProcess) And (matchClass = "" Or matchClass = "*" Or matchClass == wndClass)) {
+    If Not ((matchExe = "" Or matchExe = "*" Or matchExe = wndProcess) And (matchClass = "" Or matchClass = "*" Or matchClass == wndClass)) {
       kept .= A_LoopField "`n"           ;; fresh pin for some other window -> leave it
       Continue
     }

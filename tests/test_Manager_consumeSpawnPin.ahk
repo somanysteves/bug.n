@@ -8,8 +8,8 @@
   a managed window, copies that window's monitor + tag bitmask into
   m/tags, and returns True. Stale (>15s) lines and matching lines whose
   reference isn't managed are dropped; fresh lines declared for some other
-  window are left for it. "*" is a wildcard; a legacy 2-field line means
-  "alacritty.exe Window Class".
+  window are left for it. "*" or an absent field is a wildcard, so a
+  legacy 2-field line matches any window.
 
   Tests point Main_dataDir at A_Temp and manage a single window
   (0xb00b1, decimal 721073) on monitor 2 / view 3 (tags = 4). The
@@ -168,28 +168,16 @@ class TestManagerConsumeSpawnPin
     Yunit.Assert(applied = True, "an absent class field must match any class")
   }
 
-  LegacyLine_ConsumedByAlacrittyTerminal()
+  LegacyLine_MatchesAnyWindow()
   {
     m := 9, tags := 0
     SpawnPinTest_pin(this.PinFile, this.RefDec, this.FreshTs)
 
-    applied := Manager_consumeSpawnPin(m, tags, "alacritty.exe", "Window Class")
+    applied := Manager_consumeSpawnPin(m, tags, "chrome.exe", "Chrome_WidgetWin_1")
 
-    Yunit.Assert(applied = True, "a legacy 2-field line must still pin Alacritty's terminal")
+    Yunit.Assert(applied = True, "a legacy 2-field line must be consumed by any window")
+    Yunit.Assert(m = 2 And tags = 4, "monitor/tags must come from the legacy line's ref")
     Yunit.Assert(Not FileExist(this.PinFile), "consumed legacy line must be removed")
-  }
-
-  LegacyLine_NotConsumedByOthers()
-  {
-    m := 9, tags := 0
-    SpawnPinTest_pin(this.PinFile, this.RefDec, this.FreshTs)
-
-    a1 := Manager_consumeSpawnPin(m, tags, "alacritty.exe", "Winit Thread Event Target")
-    a2 := Manager_consumeSpawnPin(m, tags, "chrome.exe", "Chrome_WidgetWin_1")
-
-    Yunit.Assert(a1 = False, "a legacy line must not be consumed by a winit sibling")
-    Yunit.Assert(a2 = False, "a legacy line must not be consumed by a non-Alacritty window")
-    Yunit.Assert(InStr(SpawnPinTest_read(this.PinFile), this.RefDec) = 1, "legacy line must survive, got:`n" . SpawnPinTest_read(this.PinFile))
   }
 
   StalePin_Ignored_AndDropped()
