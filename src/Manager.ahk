@@ -331,6 +331,11 @@ Manager_validateAliveTimer:
   ;; is stable. The InProgress guard above prevents overlap with this pass.
   If Manager_validateAliveMissed
     Manager_armDebouncedTimer("Manager_validateAliveTimer", 200)
+  ;; A pass suppressed inside the reconnect grace did no work; retry once the
+  ;; grace ends (a shell event may have replaced the post-grace arm from
+  ;; Manager_applySessionChange). While disconnected, reconnect re-arms it.
+  Else If (Manager_sessionActive And Manager_shouldSuppressHideUnmanage(True, A_TickCount - Manager_lastReconnectTick, Config_sessionReconnectGraceMs))
+    Manager_armDebouncedTimer("Manager_validateAliveTimer", Config_sessionReconnectGraceMs - (A_TickCount - Manager_lastReconnectTick) + 200)
 Return
 
 ;; Debounce target for Bar_updateTitle. See Manager_barTitleAction.
@@ -1584,7 +1589,7 @@ Manager_registerSessionHook() {
   OnMessage(WM_WTSSESSION_CHANGE, "Manager_onSessionChange")
   ret := DllCall("Wtsapi32.dll\WTSRegisterSessionNotification", "Ptr", hWnd, "UInt", 0)
   err := A_LastError
-  Manager_sessionHookAttempts := (Manager_sessionHookAttempts + 0) + 1
+  Manager_sessionHookAttempts += 1    ;; += treats empty as 0; "" + 1 stays "" in v1
   Debug_logMessage("DEBUG[0] Manager_registerSessionHook; hWnd: " . hWnd . ", WTSRegisterSessionNotification=" . ret . (ret ? "" : ", LastError=" . err . ", attempt " . Manager_sessionHookAttempts), 0)
   If ret
     Manager_sessionHookHwnd := hWnd
@@ -1625,6 +1630,9 @@ Manager_applySessionChange(status) {
     Manager_lastReconnectTick := A_TickCount
     Manager_sessionActive := True
     Debug_logMessage("DEBUG[0] Manager_applySessionChange: session ACTIVE (status=" . status . "), " . Config_sessionReconnectGraceMs . "ms grace", 0)
+    ;; validateAlive skips (and forgets its misses) while suppressed; run a
+    ;; pass once the grace ends so a window that died meanwhile still prunes.
+    Manager_armDebouncedTimer("Manager_validateAliveTimer", Config_sessionReconnectGraceMs + 200)
     If Config_dynamicTiling {
       Loop, % Manager_monitorCount
         View_arrange(A_Index, Monitor_#%A_Index%_aView_#1)

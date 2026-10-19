@@ -180,6 +180,39 @@ class TestManagerValidateAlive
     Yunit.Assert(afterPrune = afterDefer, "settled pass must not re-arm, got " . (afterPrune - afterDefer))
   }
 
+  Reconnect_ArmsPostGraceValidatePass()
+  {
+    ;; Suppressed passes forget their misses, so the reconnect itself must
+    ;; schedule a pass for after the grace or a window that died while
+    ;; disconnected is never pruned.
+    Global Bench_armCount_Manager_validateAliveTimer, Config_dynamicTiling
+    Global Manager_sessionActive
+    Config_dynamicTiling  := False
+    Manager_sessionActive := False
+    Bench_armCount_Manager_validateAliveTimer := 0
+    Manager_applySessionChange(0x3)            ;; WTS_REMOTE_CONNECT
+    SetTimer, Manager_validateAliveTimer, Off
+    Yunit.Assert(Bench_armCount_Manager_validateAliveTimer = 1
+      , "reconnect must arm one validate pass, got " . Bench_armCount_Manager_validateAliveTimer)
+  }
+
+  TimerPass_SuppressedInGrace_RearmsForRemainingGrace()
+  {
+    ;; A shell event inside the grace can replace the post-grace arm with a
+    ;; 200 ms one; that pass is suppressed, so it must re-arm itself.
+    Global Bench_armCount_Manager_validateAliveTimer, Config_dynamicTiling
+    Global Manager_validateInProgress, Manager_lastReconnectTick, Manager_managedWndIds
+    Config_dynamicTiling       := False
+    Manager_validateInProgress := False
+    Manager_lastReconnectTick  := A_TickCount  ;; just reconnected, in grace
+    Bench_armCount_Manager_validateAliveTimer := 0
+    Gosub, Manager_validateAliveTimer
+    SetTimer, Manager_validateAliveTimer, Off
+    Yunit.Assert(Bench_armCount_Manager_validateAliveTimer = 1
+      , "suppressed in-grace pass must re-arm once, got " . Bench_armCount_Manager_validateAliveTimer)
+    Yunit.Assert(Manager_managedWndIds = "1001;1002;", "in-grace pass must not prune, got '" . Manager_managedWndIds . "'")
+  }
+
   SessionInactive_SuppressesPrune_AcrossBothPasses()
   {
     ;; While the session is inactive (disconnected/locked) the whole prune
