@@ -138,19 +138,46 @@ class TestManagerValidateAlive
 
   ReappearedWindow_ClearsMark_IsNotPruned()
   {
-    ;; 1001 blips out this pass (fake hwnd always fails WinExist), then is
-    ;; "revived" by removing it from the managed list before the second
-    ;; pass so the only remaining entry (1002) is the one that stays gone.
-    ;; What this pins is that a mark set on the first pass is per-hwnd: 1002
-    ;; still prunes on the confirming pass, independent of 1001. The pure
-    ;; reappear-clears-mark path (existsNow True) is covered directly in
-    ;; TestManagerValidateAliveDebounce.
-    Global Manager_managedWndIds
-    Manager_validateAlive()                 ;; both deferred
-    Manager_managedWndIds := "1002;"        ;; 1001 no longer tracked
-    result := Manager_validateAlive()       ;; 1002 second miss -> prune
-    Yunit.Assert(InStr(result, ";2;"), "1002 must prune on its second miss, got '" . result . "'")
-    Yunit.Assert(Manager_managedWndIds = "", "1002 removed from managed list, got '" . Manager_managedWndIds . "'")
+    ;; A real (hidden) Gui HWND stands in for a window that blipped out on
+    ;; the previous pass and is back now: seeded in the miss set, it must
+    ;; take the existsNow path -- stay managed, mark cleared -- while the
+    ;; fake 1002 alongside it is pruned on its second miss.
+    Global Manager_managedWndIds, Manager_validateAliveMissed
+    Gui, VAReappear:New, +HwndrealHwnd
+    Gui, VAReappear:Show, Hide w10 h10
+    Manager_managedWndIds       := realHwnd . ";1002;"
+    Manager_validateAliveMissed := realHwnd . ";1002;"
+    result := Manager_validateAlive()
+    Gui, VAReappear:Destroy
+    Yunit.Assert(Manager_managedWndIds = realHwnd . ";"
+      , "reappeared hwnd must stay managed and 1002 be pruned, got '" . Manager_managedWndIds . "'")
+    Yunit.Assert(Manager_validateAliveMissed = ""
+      , "reappeared hwnd's miss mark must be cleared, got '" . Manager_validateAliveMissed . "'")
+    Yunit.Assert(result = ";2;", "only 1002's monitor is affected, got '" . result . "'")
+  }
+
+  TimerPass_WithDeferredMiss_RearmsOnce_SettledPass_DoesNot()
+  {
+    ;; Manager_validateAliveTimer must re-arm itself while a miss is
+    ;; deferred, or a dead window with no further shell churn is never
+    ;; confirmed and pruned. Counted via Manager_armDebouncedTimer's
+    ;; per-label arm counter; the real timer is cancelled after each pass.
+    Global Bench_armCount_Manager_validateAliveTimer, Config_dynamicTiling
+    Global Manager_validateInProgress, Manager_managedWndIds
+    Config_dynamicTiling       := False
+    Manager_validateInProgress := False
+    ;; Seed: in AHK v1 "" + 0 is "", so an unset counter never increments.
+    Bench_armCount_Manager_validateAliveTimer := 0
+    before := 0
+    Gosub, Manager_validateAliveTimer          ;; both fake hwnds defer
+    SetTimer, Manager_validateAliveTimer, Off
+    afterDefer := Bench_armCount_Manager_validateAliveTimer
+    Gosub, Manager_validateAliveTimer          ;; confirming pass prunes both
+    SetTimer, Manager_validateAliveTimer, Off
+    afterPrune := Bench_armCount_Manager_validateAliveTimer
+    Yunit.Assert(afterDefer - before = 1, "deferred miss must re-arm exactly once, got " . (afterDefer - before))
+    Yunit.Assert(Manager_managedWndIds = "", "confirming pass must prune, got '" . Manager_managedWndIds . "'")
+    Yunit.Assert(afterPrune = afterDefer, "settled pass must not re-arm, got " . (afterPrune - afterDefer))
   }
 
   SessionInactive_SuppressesPrune_AcrossBothPasses()

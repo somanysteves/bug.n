@@ -173,7 +173,8 @@ Manager_cleanup()
   }
   ;; Drop the WTS session-change subscription taken in
   ;; Manager_registerSessionHook. Balanced Register/UnRegister on the same
-  ;; A_ScriptHwnd; skip if registration never ran (e.g. bench).
+  ;; A_ScriptHwnd; skip if registration never succeeded (e.g. bench).
+  SetTimer, Manager_registerSessionHookRetry, Off
   If Manager_sessionHookHwnd {
     DllCall("Wtsapi32.dll\WTSUnRegisterSessionNotification", "Ptr", Manager_sessionHookHwnd)
     Manager_sessionHookHwnd := 0
@@ -1577,14 +1578,26 @@ Manager_registerShellHook() {
 ;; window that survives every Bar Gui rebuild -- same rationale as the
 ;; shell hook above). NOTIFY_FOR_THIS_SESSION == 0.
 Manager_registerSessionHook() {
-  Global Manager_sessionHookHwnd
+  Global Manager_sessionHookHwnd, Manager_sessionHookAttempts
   WM_WTSSESSION_CHANGE := 0x02B1
   hWnd := A_ScriptHwnd
-  ret := DllCall("Wtsapi32.dll\WTSRegisterSessionNotification", "Ptr", hWnd, "UInt", 0)
   OnMessage(WM_WTSSESSION_CHANGE, "Manager_onSessionChange")
-  Manager_sessionHookHwnd := hWnd
-  Debug_logMessage("DEBUG[0] Manager_registerSessionHook; hWnd: " . hWnd . ", WTSRegisterSessionNotification=" . ret, 0)
+  ret := DllCall("Wtsapi32.dll\WTSRegisterSessionNotification", "Ptr", hWnd, "UInt", 0)
+  err := A_LastError
+  Manager_sessionHookAttempts := (Manager_sessionHookAttempts + 0) + 1
+  Debug_logMessage("DEBUG[0] Manager_registerSessionHook; hWnd: " . hWnd . ", WTSRegisterSessionNotification=" . ret . (ret ? "" : ", LastError=" . err . ", attempt " . Manager_sessionHookAttempts), 0)
+  If ret
+    Manager_sessionHookHwnd := hWnd
+  Else If (Manager_sessionHookAttempts < 12) {
+    ;; Fails if Remote Desktop Services isn't ready yet (early logon start).
+    ;; Without it no session messages arrive and the gate never engages.
+    SetTimer, Manager_registerSessionHookRetry, -5000
+  }
 }
+
+Manager_registerSessionHookRetry:
+  Manager_registerSessionHook()
+Return
 
 ;; WM_WTSSESSION_CHANGE handler. wParam is the WTS_* status code; the
 ;; body lives in Manager_applySessionChange so the pure classification is

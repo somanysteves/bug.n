@@ -118,8 +118,9 @@ Config_init() {
   ;; Grace window (ms) after an RDP/Citrix reconnect (or unlock) during
   ;; which app-side HIDE events are treated as session-teardown churn and
   ;; NOT unmanaged. The OS trails HIDE for several seconds past the
-  ;; reconnect; see Manager_shouldSuppressHideUnmanage.
-  Config_sessionReconnectGraceMs := 2000
+  ;; reconnect (~7s in the 2026-09-03 capture), so this sits well past
+  ;; that; see Manager_shouldSuppressHideUnmanage.
+  Config_sessionReconnectGraceMs := 10000
 
   Config_hotkeyCount := 0
   Config_initDefaultHotkeys()
