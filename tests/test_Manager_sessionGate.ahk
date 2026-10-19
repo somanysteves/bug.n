@@ -63,6 +63,26 @@ class TestManagerSessionGate
     Yunit.Assert(Manager_sessionStatusIsActive(0x6) = "", "WTS_SESSION_LOGOFF must be no-change")
   }
 
+  Status_ConnectWhileLocked_StaysInactive()
+  {
+    ;; LOCK -> DISCONNECT -> CONNECT with no UNLOCK: the connect must not
+    ;; re-enable unmanage while the session is still locked.
+    Yunit.Assert(Manager_sessionStatusIsActive(0x3, True) = False, "remote connect into a locked session must stay inactive")
+    Yunit.Assert(Manager_sessionStatusIsActive(0x1, True) = False, "console connect into a locked session must stay inactive")
+  }
+
+  Status_UnlockAfterLockedConnect_IsActive()
+  {
+    ;; The later UNLOCK is what activates; the lock flag never blocks it.
+    Yunit.Assert(Manager_sessionStatusIsActive(0x8, True) = True, "unlock must be active")
+  }
+
+  Status_LockAndDisconnect_IgnoreLockFlag()
+  {
+    Yunit.Assert(Manager_sessionStatusIsActive(0x7, False) = False, "lock is inactive")
+    Yunit.Assert(Manager_sessionStatusIsActive(0x4, False) = False, "remote disconnect is inactive")
+  }
+
   ;; ---- Manager_shouldSuppressHideUnmanage ----
 
   Inactive_Suppresses_RegardlessOfGrace()

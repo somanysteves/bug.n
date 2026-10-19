@@ -480,16 +480,21 @@ Manager_shouldReintegrateOnRestore(isManaged, isUserMinimized, isMinimized) {
 ;; hidden-and-untracked on reconnect). This mapping drives the gate that
 ;; suppresses that unmanage. Factored pure for Yunit coverage -- the
 ;; WM_WTSSESSION_CHANGE handler can't be exercised without a live session.
-;;   WTS_CONSOLE_CONNECT      0x1  active
+;;   WTS_CONSOLE_CONNECT      0x1  active, unless isLocked
 ;;   WTS_CONSOLE_DISCONNECT   0x2  inactive
-;;   WTS_REMOTE_CONNECT       0x3  active
+;;   WTS_REMOTE_CONNECT       0x3  active, unless isLocked
 ;;   WTS_REMOTE_DISCONNECT    0x4  inactive
 ;;   WTS_SESSION_LOGON        0x5  (no change)
 ;;   WTS_SESSION_LOGOFF       0x6  (no change)
 ;;   WTS_SESSION_LOCK         0x7  inactive
 ;;   WTS_SESSION_UNLOCK       0x8  active
-Manager_sessionStatusIsActive(status) {
-  If (status = 0x8 Or status = 0x3 Or status = 0x1)
+;; Connection and lock are independent (LOCK -> DISCONNECT -> CONNECT leaves
+;; the session locked), so a connect is only active if the session isn't
+;; locked; isLocked comes from Manager_sessionIsLocked, not event order.
+Manager_sessionStatusIsActive(status, isLocked := False) {
+  If (status = 0x3 Or status = 0x1)
+    Return Not isLocked
+  If (status = 0x8)
     Return True
   If (status = 0x7 Or status = 0x4 Or status = 0x2)
     Return False
@@ -1600,6 +1605,18 @@ Manager_registerSessionHook() {
   }
 }
 
+;; Live lock state of this session (WTSSessionInfoEx -> WTSINFOEX_LEVEL1
+;; SessionFlags at offset 16: 0 LOCK, 1 UNLOCK, -1 unknown). A failed or
+;; unknown query reads as unlocked, the pre-check behaviour.
+Manager_sessionIsLocked() {
+  buf := 0, bytes := 0
+  If Not DllCall("Wtsapi32.dll\WTSQuerySessionInformationW", "Ptr", 0, "UInt", 0xFFFFFFFF, "Int", 25, "Ptr*", buf, "UInt*", bytes)
+    Return False
+  flags := NumGet(buf + 0, 16, "Int")
+  DllCall("Wtsapi32.dll\WTSFreeMemory", "Ptr", buf)
+  Return (flags = 0)
+}
+
 Manager_registerSessionHookRetry:
   Manager_registerSessionHook()
 Return
@@ -1623,7 +1640,7 @@ Manager_applySessionChange(status) {
   ;; and this is the file's proven idiom for dynamic-global-deref into
   ;; View_arrange. isActive becomes a global temp (harmless).
   Global
-  isActive := Manager_sessionStatusIsActive(status)
+  isActive := Manager_sessionStatusIsActive(status, (status = 0x1 Or status = 0x3) ? Manager_sessionIsLocked() : False)
   If (isActive = "")
     Return
   If isActive {
@@ -2625,8 +2642,18 @@ Manager_validateAlive() {
     If (disposition = "defer")
       newMissed .= A_LoopField . ";"
     Else If (disposition = "prune") {
+      ;; A session change can interrupt this walk (Critical Off); re-check
+      ;; the gate with the prune held uninterruptible, and abandon the pass
+      ;; and its misses if the session went inactive meanwhile.
+      Critical On
+      If Manager_shouldSuppressHideUnmanage(Manager_sessionActive, A_TickCount - Manager_lastReconnectTick, Config_sessionReconnectGraceMs) {
+        Critical Off
+        newMissed := ""
+        Break
+      }
       Debug_logMessage("DEBUG[0] Manager_validateAlive: unmanage " . A_LoopField . " (WinExist=0, 2 consecutive passes)", 0)
       m := Manager_unmanage(A_LoopField)
+      Critical Off
       If (m And Not InStr(affected, ";" . m . ";"))
         affected .= ";" . m . ";"
     }
