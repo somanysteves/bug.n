@@ -190,7 +190,7 @@ class TestManagerValidateAlive
     Config_dynamicTiling  := False
     Manager_sessionActive := False
     Bench_armCount_Manager_validateAliveTimer := 0
-    Manager_applySessionChange(0x3)            ;; WTS_REMOTE_CONNECT
+    Manager_applySessionChange(0x8)            ;; WTS_SESSION_UNLOCK: no live lock query
     SetTimer, Manager_validateAliveTimer, Off
     Yunit.Assert(Bench_armCount_Manager_validateAliveTimer = 1
       , "reconnect must arm one validate pass, got " . Bench_armCount_Manager_validateAliveTimer)

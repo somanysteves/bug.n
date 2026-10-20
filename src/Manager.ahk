@@ -1606,15 +1606,16 @@ Manager_registerSessionHook() {
 }
 
 ;; Live lock state of this session (WTSSessionInfoEx -> WTSINFOEX_LEVEL1
-;; SessionFlags at offset 16: 0 LOCK, 1 UNLOCK, -1 unknown). A failed or
-;; unknown query reads as unlocked, the pre-check behaviour.
+;; SessionFlags at offset 16: 0 LOCK, 1 UNLOCK, -1 unknown; Windows 6.1 --
+;; A_OSVersion WIN_7, incl. 2008 R2 -- reverses LOCK/UNLOCK, a documented
+;; defect). A failed or unknown query reads as unlocked, the pre-check behaviour.
 Manager_sessionIsLocked() {
   buf := 0, bytes := 0
   If Not DllCall("Wtsapi32.dll\WTSQuerySessionInformationW", "Ptr", 0, "UInt", 0xFFFFFFFF, "Int", 25, "Ptr*", buf, "UInt*", bytes)
     Return False
   flags := NumGet(buf + 0, 16, "Int")
   DllCall("Wtsapi32.dll\WTSFreeMemory", "Ptr", buf)
-  Return (flags = 0)
+  Return (flags = (A_OSVersion = "WIN_7" ? 1 : 0))
 }
 
 Manager_registerSessionHookRetry:
